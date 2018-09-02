@@ -13,7 +13,7 @@ User-friendly tools for using the MAST Mashup API (https://mast.stsci.edu/api/v0
     
 ## Demo:
 
-See also 
+See also [demo.ipynb](https://github.com/gbrammer/mastquery/blob/master/examples/demo.ipynb).
 
 ```python
 >>> from mastquery import query, fetch
@@ -26,7 +26,7 @@ See also
 
 >>> print(tab['obs_id', 'filter', 'exptime', 'proposal_id'])
   obs_id  filter exptime proposal_id
---------- ------ ------- -----------
+========  ====== ======= ===========
 ib6o23010   G141    7898       11359
 
 ### Data products
@@ -34,7 +34,7 @@ ib6o23010   G141    7898       11359
 
 >>> print(prod['observation_id', 'filter'])
 observation_id filter
--------------- ------
+============== ======
      ib6o23rsq   G141
      ib6o23ruq   G141
      ib6o23ryq   G141
