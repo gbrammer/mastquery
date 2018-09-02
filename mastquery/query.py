@@ -2,6 +2,8 @@
 Demo of querying the ESA HST archive
 """
 
+import json
+
 import numpy as np
 
 MASTER_COLORS = {'G102':'#1f77b4',
@@ -21,6 +23,9 @@ MASTER_COLORS = {'G102':'#1f77b4',
 #                   'TARGET_NAME':'TARGET', 
 #                   'SET_ID':'VISIT'}
 
+# Wide-field instruments
+ALL_INSTRUMENTS = ['WFC3/IR','WFC3/UVIS','ACS/HRC','ACS/WFC','WFPC2/PC','WFPC2/WFC']
+
 DEFAULT_RENAME = {'t_exptime':'exptime',
                   'target_name':'target',
                   's_region':'footprint', 
@@ -36,7 +41,7 @@ DEFAULT_COLUMN_FORMAT = {'t_min':'.4f',
 
 # Don't get calibrations.  Can't use "INTENT LIKE 'SCIENCE'" because some 
 # science observations are flagged as 'Calibration' in the ESA HSA.
-DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':[False]}
+DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':['False']}
 
 # DEFAULT_EXTRA += ["TARGET.TARGET_NAME NOT LIKE '{0}'".format(calib) 
 #                  for calib in ['DARK','EARTH-CALIB', 'TUNGSTEN', 'BIAS',
@@ -45,7 +50,40 @@ DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':[False]}
 
 INSTRUMENT_DETECTORS = {'WFC3/UVIS':'UVIS', 'WFC3/IR':'IR', 'ACS/WFC':'WFC', 'ACS/HRC':'HRC', 'WFPC2':'1', 'STIS/NUV':'NUV-MAMA', 'STIS/ACQ':'CCD'}
 
-def run_query(box=None, proposid=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['OBSERVATION_ID'], remove_tempfile=True, get_query_string=False, quiet=True):
+def get_products_table(query_tab, extensions=['RAW']):
+    """
+    Get a new table with the association products
+    """
+    from astropy import table
+    from . import utils
+    
+    obsid=','.join(['{0}'.format(o) for o in query_tab['obsid']])
+    
+    request = {'service':'Mast.Caom.Products',
+       'params':{'obsid':obsid},
+       'format':'json',
+       'pagesize':10000,
+       'page':1}   
+
+    headers, outString = utils.mastQuery(request)
+    outData = json.loads(outString)
+    prod_tab = utils.mastJson2Table(outData)
+    prod_tab.rename_column('parent_obsid', 'obsid')
+    prod_tab.remove_column('proposal_id')
+    prod_tab.rename_column('obs_id', 'observation_id')
+    
+    col = 'productSubGroupDescription'
+    ext = np.vstack([prod_tab[col] == e for e in extensions]).sum(axis=0) > 0
+    
+    full_tab = table.join(prod_tab[ext], query_tab, 
+                          keys='obsid', join_type='inner')
+    
+    full_tab.sort(['observation_id'])
+    
+    return full_tab
+    
+    
+def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['obs_id', 'filter'], remove_tempfile=True, get_query_string=False, quiet=True):
     """
     
     Optional position box query:
@@ -93,21 +131,21 @@ def run_query(box=None, proposid=[13871], instruments=['WFC3/IR'], filters=[], e
         query['proposal_id'] = ['{0}'.format(p) for p in proposal_id]
         
     if len(filters) > 0:
-        query['filters'] = [filters]
+        query['filters'] = filters
 
     if len(instruments) > 0:
-        query['instrument_name'] = [instruments]
+        query['instrument_name'] = instruments
     
     # Translate to filter format
     query_list = []
     for k in query:
         # Range
         if k.startswith('!'):
-            query_list.append({"paramName":k[1:], 'min':query[k][0], 'max':query[k][1]})
+            query_list.append({"paramName":k[1:], 'values':[{'min':query[k][0], 'max':query[k][1]}]})
         elif k.startswith('*'):
-            query_list.append({"paramName":k[1:], values:[], 'freeText':query[k]})
+            query_list.append({"paramName":k[1:], 'values':[], 'freeText':query[k]})
         else:
-            query_list.append({"paramName":k[1:], values:query[k]})
+            query_list.append({"paramName":k, 'values':query[k]})
             
     request['params']['filters'] = query_list
             
@@ -116,6 +154,9 @@ def run_query(box=None, proposid=[13871], instruments=['WFC3/IR'], filters=[], e
     
     # Run the query
     headers, outString = utils.mastQuery(request)
+
+    outData = json.loads(outString)
+    tab = utils.mastJson2Table(outData)
     
     try:
         outData = json.loads(outString)
@@ -129,10 +170,7 @@ def run_query(box=None, proposid=[13871], instruments=['WFC3/IR'], filters=[], e
     
     if len(tab) == 0:
         return tab
-    
-    # Sort
-    tab.sort('proposal_id')
-    
+        
     # Add coordinate name
     if 'ra' in tab.colnames:
         jtargname = [utils.radec_to_targname(ra=tab['ra'][i], dec=tab['dec'][i], scl=6) for i in range(len(tab))]
@@ -151,6 +189,18 @@ def run_query(box=None, proposid=[13871], instruments=['WFC3/IR'], filters=[], e
     #tab['OBSERVATION_ID','orientat'][so].show_in_browser(jsviewer=True)
     
     set_default_formats(tab)
+    
+    # Visit ID
+    tab['visit'] = [o[4:6] for o in tab['obs_id']]
+    
+    # Area
+    set_area_column(tab)
+
+    # Orientat
+    #set_orientat_column(tab)
+    
+    # Sort
+    tab.sort(sort_column)
     
     return tab
 
@@ -177,69 +227,90 @@ def add_postcard(table, resolution=256):
        tab = grizli.utils.GTable(table)
        tab['observation_id','filter','orientat','postcard'][tab['visit'] == 1].write_sortable_html('tab.html', replace_braces=True, localhost=True, max_lines=10000, table_id=None, table_class='display compact', css=None)
         
-def old_parse_polygons(polystr):
-    if 'UNION' in polystr.upper():
-        spl = polystr[:-1].split('Polygon')[1:]
-    else:
-        spl = polystr.replace('FK5','ICRS').split('ICRS')[1:]
-        
-    poly = [np.cast[float](p.split()).reshape((-1,2)) for p in spl]
-    return poly
-
 def parse_polygons(polystr):
+    from astropy.coordinates import Angle
+    import astropy.units as u
+    
     if hasattr(polystr, 'decode'):
-        spl = polystr.decode('utf-8').strip()[1:-1].split(',')
+        polyspl = polystr.decode('utf-8').strip().split('POLYGON')#strip()[1:-1].split(',')
     else:
-        spl = polystr.strip()[1:-1].split(',')
-
-    poly = [np.cast[float](spl).reshape((-1,2))] #[np.cast[float](p.split()).reshape((-1,2)) for p in spl]
+        polyspl = polystr.strip().split('POLYGON')
+    
+    poly = []
+    for pp in polyspl:
+        if not pp:
+            continue
+            
+        spl = pp.strip().split()
+        for ip, p in enumerate(spl):
+            try:
+                pf = float(p)
+                break
+            except:
+                continue
+    
+        poly_i = np.cast[float](spl[ip:]).reshape((-1,2)) #[np.cast[float](p.split()).reshape((-1,2)) for p in spl]
+    
+        ra = Angle(poly_i[:,0]*u.deg).wrap_at(360*u.deg).value
+        poly_i[:,0] = ra
+        poly.append(poly_i)
+        
     return poly
     
-    
-
 def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):
     """
     Set default print formats
     """
-    DEFAULT_FORMATS = {'start_time_mjd':'.4f',
-               'end_time_mjd':'.4f',
-               'exptime':'.0f',
-               'ra':'.6f',
-               'dec':'.6f',
-               'ecl_lat':'.6f',
-               'ecl_lon':'.6f',
-               'gal_lat':'.6f',
-               'gal_lon':'.6f',
-               'fov_size':'.3f'}#,
-               #'pixscale':'.3f'}
     
     for f in formats:
         if f in table.colnames:
             table[f].format = formats[f]
-            
+
+def set_area_column(table):
+    """
+    Make a column in the `table` computing each orientation with
+    `get_orientat`.
+    """
+    import astropy.units as u
+    
+    table['area'] = [get_footprint_area(p) for p in table['footprint']]
+    table['area'].format = '.1f'
+    table['area'].unit = u.arcmin**2
+    
+def get_footprint_area(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486 127.423118 18.887458 127.463833 18.889591'):
+    from shapely.geometry import Polygon
+    
+    px = parse_polygons(polystr)[0]
+    poly = Polygon(px)
+    cosd = np.cos(px[0,1]/180*np.pi)
+    area = poly.area*3600*cosd
+    return area
+    
 def set_orientat_column(table):
     """
     Make a column in the `table` computing each orientation with
     `get_orientat`.
     """
-    table['orientat'] = [query.get_orientat(p) for p in table['footprint']]
+    table['orientat'] = [get_orientat(p) for p in table['footprint']]
     table['orientat'].format = '.1f'
     
 def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486 127.423118 18.887458 127.463833 18.889591'):
     """
     
-    Compute the "ORIENTAT" position angle (PA of the detector +y axis) from an 
-    ESA archive polygon, assuming that the first two entries of the polygon 
+    Compute the "ORIENTAT" position angle (PA of the detector +y axis) from  
+    the archive footprint, assuming that the first two entries of the polygon 
     are the LL and UL corners of the detector.
     
     """
     from astropy.coordinates import Angle
     import astropy.units as u
     
-    try:
-        p = parse_polygons(polystr)[0]
-    except:
-        p = old_parse_polygons(polystr)[0]
+    p = parse_polygons(polystr)[0]
+    
+    # try:
+    #     p = parse_polygons(polystr)[0]
+    # except:
+    #     p = old_parse_polygons(polystr)[0]
         
     dra = (p[1,0]-p[0,0])*np.cos(p[0,1]/180*np.pi)
     dde = p[1,1] - p[0,1]

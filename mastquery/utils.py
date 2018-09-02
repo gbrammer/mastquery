@@ -2,6 +2,8 @@
 Utilities
 """
 import os
+import json
+
 import warnings
 import numpy as np
 
@@ -23,7 +25,7 @@ except ImportError:  # Python 2.x
 ## mastQuery and mastJson2Table from 
 ## https://mast.stsci.edu/api/v0/MastApiTutorial.html
 def mastQuery(request):
-
+    import sys
     server='mast.stsci.edu'
 
     # Grab Python Version 
