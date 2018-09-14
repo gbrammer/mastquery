@@ -33,7 +33,7 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, close=True, use_parent=False, extensions=['FLT','C1M']):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -181,8 +181,16 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         if use_parent:
             xtab = tab
         else:
-            xtab = query.run_query(box=box, proposal_id=proposal_id, instruments=instruments, filters=filters, base_query=base_query)
-        
+            try:
+                xtab = query.run_query(box=box, proposal_id=proposal_id, instruments=instruments, filters=filters, base_query=base_query)
+            except:
+                pass
+                
+            if not include_subarrays:
+                query.set_area_column(xtab)
+                subarray = (xtab['instrument_name'] == 'WFC3/IR') & (xtab['area'] < 3.8)
+                xtab = xtab[~subarray]
+            
         ebv = utils.get_irsa_dust(ra, dec, type='SandF')
         xtab.meta['NAME'] = jname
         xtab.meta['RA'] = ra
@@ -200,7 +208,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             
             try:
                 isect = p.intersection(pshape[0])
-                pointing_overlaps[j] = isect.area > 0
+                pointing_overlaps[j] = isect.area > min_area*pshape[0].area
             except:
                 pointing_overlaps[j] = False
                 
@@ -287,6 +295,7 @@ def summary_table(tabs=None, output='overlap_summary'):
     from collections import OrderedDict
     from astropy.table import Table
     import astropy.table
+    from mastquery.overlaps import parse_overlap_table
     
     try:
         from grizli import utils
@@ -323,8 +332,9 @@ def summary_table(tabs=None, output='overlap_summary'):
     mtab = Table(pdict) #rows=props, names=names)
     mtab['RA'].format = '.5f'
     mtab['DEC'].format = '.5f'
-    mtab.rename_column('MW_EBV', 'E(B-V)')
-
+    #mtab.rename_column('MW_EBV', 'E(B-V)')
+    mtab['MW_EBV'].format = '.2f'
+    
     mtab['EclLat'].format = '.1f'
     mtab['EclLon'].format = '.1f'
     
@@ -341,10 +351,13 @@ def summary_table(tabs=None, output='overlap_summary'):
     mtab['TperG141'].format = '.1f'
     
     # Links
-    mast_link = ['<a href=https://archive.stsci.edu/hst/search.php?RA={0}&DEC={1}&radius=3.&max_records=5000&sci_aec=S&action=Search>MAST</a>'.format(t['RA'], t['DEC']) for t in mtab]
+    mast_link = ['<a href=https://archive.stsci.edu/hst/search.php?RA={0}&DEC={1}&radius=3.&max_records=5000&sci_aec=S&action=Search>{2}</a>'.format(t['RA'], t['DEC'], 'MAST') for t in mtab]
     mtab['MAST'] = mast_link
     
     fp_link = ['<a href={0}_footprint.pdf>Footprint</a>'.format(t['NAME']) for t in mtab]
+    mtab['Footprint'] = fp_link
+
+    fp_link = ['<a href={0}_footprint.pdf><img src={0}_footprint.png height=300px></a>'.format(t['NAME']) for t in mtab]
     mtab['Footprint'] = fp_link
     
     mtab.write('{0}.fits'.format(output), overwrite=True)
@@ -354,9 +367,12 @@ def summary_table(tabs=None, output='overlap_summary'):
         gtab.write_sortable_html('{0}.html'.format(output),
                      replace_braces=True, localhost=False, 
                      max_lines=len(mtab)+10, table_id=None, 
-                     table_class='display compact', css=None)
+                     table_class='display compact', css=None, 
+                     filter_columns=['NG102', 'NG141', 'NG800L', 'NG280', 'MW_EBV'])
     
-    return gtab
+        return gtab
+    else:
+        return mtab
                 
 def parse_overlap_table(tab):
     """
@@ -379,6 +395,9 @@ def parse_overlap_table(tab):
     """
     import numpy as np
     from shapely.geometry import Polygon
+    from mastquery import query# as mutils
+    
+    query.set_transformed_coordinates(tab)
     
     # Meta attributes
     names, properties = [], []
@@ -390,27 +409,27 @@ def parse_overlap_table(tab):
     names.extend(['EclLat','EclLon','GalLat','GalLon'])
     properties.append(np.mean(tab['ecl_lat']))
     properties.append(np.mean(tab['ecl_lon']))
-    properties.append(np.mean(tab['gal_lat']))
-    properties.append(np.mean(tab['gal_lon']))
+    properties.append(np.mean(tab['gal_b']))
+    properties.append(np.mean(tab['gal_l']))
     
     # Unique elements of the table
     names.append('NFILT')
     properties.append(len(np.unique(tab['filter'])))
-    for c in ['filter', 'target', 'target_description', 'proposal_id']:
+    for c in ['filter', 'target', 'target_classification', 'proposal_id']:
         if c not in tab.colnames:
             continue
         
         names.append(c)
         properties.append(' '.join(['{0}'.format(p) for p in np.unique(tab[c])]))
-        if c in ['target_description']:
+        if c in ['target_classification']:
             properties[-1] = properties[-1].title().replace(';','\n')
             
-    for c in ['pi_name']:
-        names.append(c)
+    for c in ['proposal_pi']:
+        names.append(c.split()[0])
         properties.append(' '.join(['{0}'.format(p.split()[0].title()) for p in np.unique(tab[c])]))
     
     # By grism
-    for g in ['G102', 'G141']:
+    for g in ['G102', 'G141', 'G800L', 'G280']:
         m = tab['filter'] == g
         names.extend(['{0}{1}'.format(p, g) for p in ['N', 'Area', 'Texp', 'Tper', 'PA']])
         if m.sum() == 0:
