@@ -82,7 +82,7 @@ def make_curl_script(table, level=None, script_name=None, inst_products=DEFAULT_
             curl_list = [make_s3_command(dataset, product, output_path=output_path, s3_sync=s3_sync) for dataset in table['observation_id']]
                 
         else:
-            curl_list = ['curl {0}{1}_{2}.FITS -o {5}/{3}_{4}.fits'.format(BASE_URL, dataset.upper(), level.upper(), dataset.lower(), level.lower(), output_path) for dataset in table['observation_id']]
+            curl_list = ['curl {0}{1}_{2}.FITS -o {5}/{3}_{4}.fits.gz'.format(BASE_URL, dataset.upper(), level.upper(), dataset.lower(), level.lower(), output_path) for dataset in table['observation_id']]
     
     if script_name is not None:
         fp = open(script_name, 'w')
@@ -133,7 +133,7 @@ def make_s3_command(dataset, product, output_path='./', s3_sync=True):
     
 def persistence_products(tab):
     import numpy as np
-    wfc3 =  tab['instdet'] == 'WFC3/IR'
+    wfc3 =  tab['instrument_name'] == 'WFC3/IR'
     progs = np.unique(tab[wfc3]['proposal_id'])
     persist_files = []
     for prog in progs:
@@ -151,5 +151,105 @@ def persistence_products(tab):
 
     return persist_files
     
+### Direct download from MAST
+# https://mast.stsci.edu/api/v0/pyex.html#downloadReq
+def directDownload(tab, inst_products=DEFAULT_PRODUCTS, path='./', skip_existing=True):
+
+    import sys
+    import os
+    import time
+    import re
+    import json
     
+    try: # Python 3.x
+        from urllib.parse import quote as urlencode
+        from urllib.request import urlretrieve
+    except ImportError:  # Python 2.x
+        from urllib import pathname2url as urlencode
+        from urllib import urlretrieve
+    
+    try: # Python 3.x
+        import http.client as httplib 
+    except ImportError:  # Python 2.x
+        import httplib
+        
+    # collect the data products
+    #result = getCaomProducts()
+    #data = result['data']
+
+    # setting up the https connection
+    server='mast.stsci.edu'
+    conn = httplib.HTTPSConnection(server)
+
+    # dowload the first products
+    for i in range(len(tab)):
+        products = inst_products[tab[i]['instrument_name']]
+        for prod in products:
+            ext = '_{0}.fits'.format(prod.lower())
+            
+            # make file path
+            #outPath = "mastFiles/HST/"+tab[i]['obs_id']
+            #if not os.path.exists(outPath):
+            #    os.makedirs(outPath)
+            outPath = os.path.join(path, tab[i]['productFilename'].split('_')[0]+ext)
+        
+            if os.path.exists(outPath) & skip_existing:
+                print('File {0} exists.'.format(outPath))
+                continue
+                
+            # Download the data
+            uri = tab[i]['dataURI'].split('_')[0]+ext
+            conn.request("GET", "/api/v0/download/file?uri="+uri)
+            resp = conn.getresponse()
+            fileContent = resp.read()
+    
+            # save to file
+            with open(outPath,'wb') as FLE:
+                FLE.write(fileContent)
+        
+            # check for file 
+            if not os.path.isfile(outPath):
+                print("ERROR: " + outPath + " failed to download.")
+            else:
+                print("COMPLETE: ", outPath)
+
+    conn.close()
+
+import os
+def fetch_wfpc2_calib(file='g6q1912hu_r4f.fits', path=os.getenv('uref')):
+    from stsci.tools import convertwaiveredfits
+    
+    server='mast.stsci.edu'
+    conn = httplib.HTTPSConnection(server)
+    outPath = os.path.join(path, file)
+    uri = 'mast:HST/product/'+file
+    
+    conn.request("GET", "/api/v0/download/file?uri="+uri)
+    resp = conn.getresponse()
+    fileContent = resp.read()
+    
+    # save to file
+    with open(outPath,'wb') as FLE:
+        FLE.write(fileContent)
+
+    # check for file 
+    if not os.path.isfile(outPath):
+        print("ERROR: " + outPath + " failed to download.")
+        status = False
+    else:
+        print("COMPLETE: ", outPath)
+        status = True
+        
+    conn.close()
+    
+    if status:
+        try:
+            hdu = convertwaiveredfits.convertwaiveredfits(outPath)
+            hdu.writeto(outPath.replace('.fits','_c0h.fits'))
+        except:
+            return True
+            
+        while 'HISTORY' in hdu[0].header:
+            hdu[0].header.remove('HISTORY')
+
     
