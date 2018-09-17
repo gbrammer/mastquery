@@ -138,7 +138,7 @@ def set_warnings(numpy_level='ignore', astropy_level='ignore'):
     np.seterr(all=numpy_level)
     warnings.simplefilter(astropy_level, category=AstropyWarning)
 
-def radec_to_targname(ra=0, dec=0, scl=10000):
+def radec_to_targname(ra=0, dec=0, scl=10000, minute=True):
     """Turn decimal degree coordinates into a string
     
     Example:
@@ -152,6 +152,9 @@ def radec_to_targname(ra=0, dec=0, scl=10000):
     ra, dec : float
         Sky coordinates in decimal degrees
     
+    minute : bool
+        Round to arcminutes.
+        
     Returns
     --------
     targname : str
@@ -171,7 +174,22 @@ def radec_to_targname(ra=0, dec=0, scl=10000):
     
     cstr = re.split('[hmsd.]', coo.to_string('hmsdms', precision=2))
     targname = ('j{0}{1}'.format(''.join(cstr[0:3]), ''.join(cstr[4:7])))
-    targname = targname.replace(' ', '')
+    targname = targname.replace(' ', '').replace('+','p').replace('-','m')
+
+    if minute:
+        # Round to arcmin
+        rad, ram, ras = cstr[0:3]
+        ded, dem, des = cstr[4:7]
+        
+        sign = 'p' if ded[1] == '+' else 'm'
+        ded = ded[2:]
+        if (int(ras) > 30):
+            ram = '{0:02d}'.format(int(ram)+1)
+        
+        if (int(des) > 30):
+            dem = '{0:02d}'.format(int(dem)+1)
+        
+        targname = 'j{0}{1}{2}{3}{4}'.format(rad, ram, sign, ded.strip(), dem)
     
     return targname
     

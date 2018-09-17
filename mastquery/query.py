@@ -50,6 +50,63 @@ DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':['False']
 
 INSTRUMENT_DETECTORS = {'WFC3/UVIS':'UVIS', 'WFC3/IR':'IR', 'ACS/WFC':'WFC', 'ACS/HRC':'HRC', 'WFPC2':'1', 'STIS/NUV':'NUV-MAMA', 'STIS/ACQ':'CCD'}
 
+def get_correct_exposure_times(tab, in_place=True, ni=200):
+    # Split into smaller groups
+    #ni = 200
+    N = len(tab) // ni
+    exptime = [_get_correct_exposure_times(tab[i*ni:(i+1)*ni], in_place=False) for i in range(N+(len(tab)/ni != N))]
+    
+    if in_place:
+        tab['exptime'] = np.hstack(exptime)
+        tab['exptime'].format = '.1f'
+    else:
+        return np.hstack(exptime)
+            
+def _get_correct_exposure_times(tab, in_place=True):
+    """
+    Query direct from mast
+    """
+    import os
+    import time
+    from astropy.table import Table
+    
+    url = "http://archive.stsci.edu/hst/search.php?action=Search&sci_data_set_name={datasets}&max_records=1000&outputformat=CSV"
+    dataset_list = [o[-18:-9] for o in tab['dataURL']]
+    datasets = ','.join(dataset_list)
+
+    query_url = url.format(datasets=datasets)
+    #os.system('curl -o mast.csv '+query_url)
+    try:
+        mast = Table.read(query_url, format='csv')[1:]
+        #time.sleep(5)    
+    except:
+        print('get_correct_exptime: read failed')
+        #tab['exptime'] = -1.
+        #tab['exptime'].format = '.1f'
+        if in_place:
+            return False
+        else:
+            return np.zeros(len(tab))-1
+    
+    if len(tab) == len(mast):
+        som = [list(mast['Dataset']).index(o.upper()) for o in dataset_list]
+        tab['mexptime'] = 1.
+        mast_time = np.array([float(t) for t in mast['Exp Time']])
+        if in_place:
+            tab['exptime']= mast_time[som]
+            tab['exptime'].format = '.1f'
+        else:
+            return mast_time[som]
+    else:
+        print('get_correct_exptime: tables don\'t match ({0} {1})'.format(len(tab), len(mast)))
+        #tab['exptime'] = -1.
+        #tab['exptime'].format = '.1f'
+        if in_place:
+            return False
+        else:
+            return np.zeros(len(tab))-1
+        
+        
 def get_products_table(query_tab, extensions=['RAW']):
     """
     Get a new table with the association products
@@ -82,8 +139,7 @@ def get_products_table(query_tab, extensions=['RAW']):
     
     return full_tab
     
-    
-def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['obs_id', 'filter'], remove_tempfile=True, get_query_string=False, quiet=True):
+def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['obs_id', 'filter'], remove_tempfile=True, get_query_string=False, quiet=True, coordinate_transforms=True, get_exptime=True):
     """
     
     Optional position box query:
@@ -194,7 +250,7 @@ def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[]
     tab['visit'] = [o[4:6] for o in tab['obs_id']]
     
     # Area
-    set_area_column(tab)
+    #set_area_column(tab)
 
     # Orientat
     #set_orientat_column(tab)
@@ -202,6 +258,10 @@ def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[]
     # Sort
     tab.sort(sort_column)
     
+    # Correct exposure time
+    if get_exptime:
+        get_correct_exposure_times(tab)
+        
     return tab
 
 def fix_byte_columns(tab):
@@ -266,6 +326,36 @@ def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):
         if f in table.colnames:
             table[f].format = formats[f]
 
+def set_expstart(table):
+    from astropy import time
+    mjd = time.Time(table['t_min'], format='mjd')
+    table['expstart'] = mjd.iso
+    
+def set_transformed_coordinates(table):
+    """
+    Set GeocentricTrueEcliptic and Galactic coordinate tranformations
+    from `astropy.coordinates`.
+    """
+    from astropy import coordinates
+    import astropy.units as u
+    
+    coo = coordinates.SkyCoord(ra=table['ra']*u.deg, dec=table['dec']*u.deg)
+    table.rd = coo
+
+    ecl = coo.transform_to(coordinates.GeocentricTrueEcliptic())
+    table['ecl_lat'] = ecl.lat
+    table['ecl_lat'].format = '.1f'
+
+    table['ecl_lon'] = ecl.lon
+    table['ecl_lon'].format = '.1f'
+
+    gal = coo.transform_to(coordinates.Galactic())
+    table['gal_l'] = gal.l
+    table['gal_l'].format = '.1f'
+
+    table['gal_b'] = gal.b
+    table['gal_b'].format = '.1f'
+    
 def set_area_column(table):
     """
     Make a column in the `table` computing each orientation with
@@ -273,7 +363,15 @@ def set_area_column(table):
     """
     import astropy.units as u
     
-    table['area'] = [get_footprint_area(p) for p in table['footprint']]
+    area = []
+    for p in table['footprint']:
+        try:
+            a = get_footprint_area(p)
+        except:
+            a = np.nan
+        area.append(a)
+        
+    table['area'] = area
     table['area'].format = '.1f'
     table['area'].unit = u.arcmin**2
     
