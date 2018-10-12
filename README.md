@@ -25,20 +25,20 @@ See also [demo.ipynb](https://github.com/gbrammer/mastquery/blob/master/examples
                          base_query=query.DEFAULT_QUERY)
 
 >>> print(tab['obs_id', 'filter', 'exptime', 'proposal_id'])
-  obs_id  filter exptime proposal_id
-========  ====== ======= ===========
-ib6o23010   G141    7898       11359
+  obs_id   filter  exptime  proposal_id
+========   ======  =======  ===========
+ib6o23010   G141    4211.7        11359
 
 ### Data products
 >>> prod = query.get_products_table(tab, extensions=['RAW'])
 
->>> print(prod['observation_id', 'filter'])
-observation_id filter
-============== ======
-     ib6o23rsq   G141
-     ib6o23ruq   G141
-     ib6o23ryq   G141
-     ib6o23s0q   G141
+>>> print(prod['observation_id', 'filter', 'productFilename'])
+observation_id filter  productFilename  
+============== ====== ==================
+     ib6o23rsq   G141 ib6o23rsq_raw.fits
+     ib6o23ruq   G141 ib6o23ruq_raw.fits
+     ib6o23ryq   G141 ib6o23ryq_raw.fits
+     ib6o23s0q   G141 ib6o23s0q_raw.fits
      
 ### Fetch products
 >>> s3_lines = fetch.make_curl_script(prod, script_name=None, s3_sync=True)

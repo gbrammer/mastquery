@@ -12,7 +12,7 @@ args = 'git describe --tags'
 p = subprocess.Popen(args.split(), stdout=subprocess.PIPE)
 version = p.communicate()[0].decode("utf-8").strip()
 
-version = "0.0.1"
+version = "0.2.0"
 
 #version = "0.1.8"
 #version = "0.1.9" # Fix file extensions
