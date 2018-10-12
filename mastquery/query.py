@@ -160,9 +160,10 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     for k in kwargs:
         if k == 'instruments':
             query_args['instrument_name'] = kwargs[k]
-        
-        if k == 'proposal_id':
+        elif k == 'proposal_id':
             query_args['proposal_id'] = ['{0}'.format(p) for p in kwargs[k]]
+        else:
+            query_args[k] = kwargs[k]
             
     if (box is not None):
         # Observations.query_region doesn't allow column filtering, 
