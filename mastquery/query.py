@@ -41,7 +41,8 @@ DEFAULT_COLUMN_FORMAT = {'t_min':'.4f',
 
 # Don't get calibrations.  Can't use "INTENT LIKE 'SCIENCE'" because some 
 # science observations are flagged as 'Calibration' in the ESA HSA.
-DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':['False']}
+#DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':['False']}
+DEFAULT_QUERY = {'obs_collection':['HST'], 'intentType':['science'], 'mtFlag':['False']}
 
 # DEFAULT_EXTRA += ["TARGET.TARGET_NAME NOT LIKE '{0}'".format(calib) 
 #                  for calib in ['DARK','EARTH-CALIB', 'TUNGSTEN', 'BIAS',
@@ -138,8 +139,51 @@ def get_products_table(query_tab, extensions=['RAW']):
     full_tab.sort(['observation_id'])
     
     return full_tab
+
+DEFAULT_QUERY_ASTROQUERY = {'intentType': ['science'], 'mtFlag': ['False'], 'obs_collection': ['HST']}
+
+def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
+              sort_column=['obs_id', 'filter'],
+              base_query=DEFAULT_QUERY_ASTROQUERY, **kwargs):
+    """
+    Run MAST query with astroquery.mast
+    """                  
+    import time
+    from astroquery.mast import Observations
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+           
+    query_args = {}
+    for k in base_query:
+        query_args[k] = base_query[k]
     
-def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['obs_id', 'filter'], remove_tempfile=True, get_query_string=False, quiet=True, coordinate_transforms=True, get_exptime=True):
+    for k in kwargs:
+        if k == 'instruments':
+            query_args['instrument_name'] = kwargs[k]
+        
+        if k == 'proposal_id':
+            query_args['proposal_id'] = ['{0}'.format(p) for p in kwargs[k]]
+            
+    if (box is not None):
+        ra, dec, radius = box
+        coo = SkyCoord(ra*u.deg, dec*u.deg)
+        tab = Observations.query_region(coordinates=coo, 
+                                        radius=radius*u.arcmin,
+                                        **query_args)
+    else:
+        tab = Observations.query_criteria(**query_args)                               
+    
+    tab.meta['qtime'] = time.ctime(), 'Query timestamp'
+    
+    if len(tab) == 0:
+        return tab
+    
+    tab = modify_table(tab, get_exptime=get_exptime, 
+                       rename_columns=rename_columns,
+                       sort_column=sort_column)
+    return tab
+    
+def run_query_old(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['obs_id', 'filter'], remove_tempfile=True, get_query_string=False, quiet=True, coordinate_transforms=True, get_exptime=True):
     """
     
     Optional position box query:
@@ -213,7 +257,7 @@ def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[]
 
     outData = json.loads(outString)
     tab = utils.mastJson2Table(outData)
-    
+
     try:
         outData = json.loads(outString)
         tab = utils.mastJson2Table(outData)
@@ -226,7 +270,15 @@ def run_query(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[]
     
     if len(tab) == 0:
         return tab
-        
+    
+    tab = modify_table(tab, get_exptime=get_exptime, 
+                       rename_columns=rename_columns,
+                       sort_column=sort_column)
+    return tab
+    
+def modify_table(tab, get_exptime=True, rename_columns=DEFAULT_RENAME, 
+                 sort_column=['obs_id', 'filter']):
+    
     # Add coordinate name
     if 'ra' in tab.colnames:
         jtargname = [utils.radec_to_targname(ra=tab['ra'][i], dec=tab['dec'][i], scl=6) for i in range(len(tab))]
