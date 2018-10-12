@@ -59,7 +59,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         Don't recompute if a table with the same rootname already exists.
         
     extra : list
-        Extra query parameters.
+        Extra query parameters.  The available columns are described at 
+        https://mast.stsci.edu/api/v0/_c_a_o_mfields.html.
         
     close : bool
         If true, close the figure objects.

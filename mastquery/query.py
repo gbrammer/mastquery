@@ -146,7 +146,10 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
               sort_column=['obs_id', 'filter'],
               base_query=DEFAULT_QUERY_ASTROQUERY, **kwargs):
     """
-    Run MAST query with astroquery.mast
+    Run MAST query with astroquery.mast.  
+    
+    All columns listed at https://mast.stsci.edu/api/v0/_c_a_o_mfields.html 
+    can be used for the query.
     """                  
     import time
     from astroquery.mast import Observations
