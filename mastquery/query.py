@@ -162,32 +162,18 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
             query_args['instrument_name'] = kwargs[k]
         elif k == 'proposal_id':
             query_args['proposal_id'] = ['{0}'.format(p) for p in kwargs[k]]
+        elif k == 'extensions':
+            continue
         else:
             query_args[k] = kwargs[k]
             
     if (box is not None):
-        # Observations.query_region doesn't allow column filtering, 
-        # so first run query_region and pass the resulting obsids to 
-        # the filtered query
-        tab = Observations.query_criteria(**query_args)                               
-
         ra, dec, radius = box
-        
         coo = SkyCoord(ra*u.deg, dec*u.deg)        
-        treg = Observations.query_region(coordinates=coo,
-                                         radius=radius*u.arcmin)
+        query_args['coordinates'] = coo
+        query_args['radius'] = radius*u.arcmin
         
-        tab = Observations.query_criteria(obsid=treg['obsid'], **query_args)                               
-        
-        # coo = SkyCoord([ra*u.deg], [dec*u.deg])        
-        # tab_coo = SkyCoord(tab['ra']*u.deg, tab['dec']*u.deg)
-        # idx, d2, d3 = tab_coo.match_to_catalog_sky(coo)
-        # ok = d2 < radius*u.arcmin
-        # 
-        # tab = tab[ok]        
-
-    else:
-        tab = Observations.query_criteria(**query_args)                               
+    tab = Observations.query_criteria(**query_args)                               
     
     tab.meta['qtime'] = time.ctime(), 'Query timestamp'
     
