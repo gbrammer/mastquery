@@ -299,6 +299,7 @@ def summary_table(tabs=None, output='overlap_summary'):
     from astropy.table import Table
     import astropy.table
     from mastquery.overlaps import parse_overlap_table
+    from mastquery.query import set_transformed_coordinates
     
     try:
         from grizli import utils
@@ -309,6 +310,9 @@ def summary_table(tabs=None, output='overlap_summary'):
     if tabs is None:
         tabs = [Table.read(file) for file in glob.glob('*footprint.fits')]
     
+    for tab in tabs:
+        set_transformed_coordinates(tab)
+        
     # for tab in tabs:
     #     tab.remove_column('moving_target')
     # #
