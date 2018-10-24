@@ -33,7 +33,7 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, prefix='', suffix='', fractional_overlap=0):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -108,7 +108,12 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         for j in range(len(match_poly)):
             isect = match_poly[j].intersection(polygons[i])
             #print(tab['target'][i], i, isect.area > 0)
-            if isect.area*3600. > 0.5:
+            if fractional_overlap > 0:
+                test_area = fractional_overlap*polygons[i].area
+            else:
+                test_area = 0.5/3600.
+                
+            if isect.area > test_area:
                 #print(isect.area*3600)
                 match_poly[j] = match_poly[j].union(polygons[i])
                 match_ids[j].append(i)
@@ -134,7 +139,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             for j in range(len(match_poly)):
                 isect = match_poly[j].intersection(mpolygons[i])
                 #print(tab['target'][i], i, isect.area > 0)
-                if isect.area > 0:
+                if isect.area > fractional_overlap*mpolygons[i].area:
                     #print(isect.area*3600)
                     match_poly[j] = match_poly[j].union(mpolygons[i])
                     match_ids[j].extend(mids[i])
@@ -174,6 +179,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         
         # Build target name from RA/Dec
         jname = utils.radec_to_targname(box[0], box[1], scl=1000)
+        jname = prefix+jname+suffix
+        
         print('\n\n', i, jname, box[0], box[1])
 
         if (os.path.exists('{0}_footprint.pdf'.format(jname))) & SKIP:
@@ -479,5 +486,65 @@ def parse_overlap_table(tab):
         properties.append(len(np.unique(PAs)))
 
     return names, properties
+    
+def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True):
+    """
+    Associate visits by filter + position + PA
+    """
+    from . import query
+    
+    import numpy as np
+    from shapely.geometry import Point
+    
+    cosd = np.cos(tab['dec']/180*np.pi)
+    dx = (tab['ra'] - np.median(tab['ra']))*cosd*60    
+    dy = (tab['dec'] - np.median(tab['dec']))*60
+    
+    ori = [query.get_orientat(tab['footprint'][i]) for i in range(len(tab))]
+    tab['orientat'] = ori
+     
+    indices = np.arange(len(tab))
+    assoc_idx = np.zeros(len(tab), dtype=int)-1
+    
+    assoc = []
+    for i in range(len(tab)):
+        if assoc_idx[i] >= 0:
+            continue
+                
+        assoc_idx[i] = len(assoc)
+        
+        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'idx':len(assoc)}
+        
+        for j in range(i+1, len(tab)):
+            
+            if assoc_idx[j] >= 0:
+                continue
+                
+            f_j = tab['filter'][j]
+            dpa = assoc_i['ori'] - ori[j]
+            p_j = Point(dx[j], dy[j]).buffer(max_sep)
+            
+            # Has match
+            test = (np.abs(dpa) < max_pa) & (p_j.intersects(assoc_i['pos']))
+            if match_filter:
+                test &= (f_j == assoc_i['filter'])
+            
+            if test:
+                #print('Has match!', j)
+                #break
+                
+                assoc_idx[j] = assoc_idx[i]
+                assoc_i['pos'] = assoc_i['pos'].union(p_j)
+                assoc_i['indices'].append(j)
+        
+        assoc.append(assoc_i)
+        
+    tab['assoc_idx'] = assoc_idx
+    
+    if False:
+        assoc = 48
+        sel = tab['assoc_idx'] == assoc
+        tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
+        
     
     
