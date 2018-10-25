@@ -133,6 +133,11 @@ def make_s3_command(dataset, product, output_path='./', s3_sync=True):
     
 def persistence_products(tab):
     import numpy as np
+    try:
+        tab['instrument_name'].fill_value = '0'
+    except:
+        pass
+        
     wfc3 =  tab['instrument_name'] == 'WFC3/IR'
     progs = np.unique(tab[wfc3]['proposal_id'])
     persist_files = []
