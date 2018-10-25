@@ -81,9 +81,11 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     import numpy as np
     import matplotlib.pyplot as plt
 
+    from astropy.table import Table
+
     from shapely.geometry import Polygon
     from descartes import PolygonPatch
-        
+            
     # Get shapely polygons for each exposures
     polygons = []
     
@@ -196,7 +198,13 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 
             if not include_subarrays:
                 query.set_area_column(xtab)
-                subarray = (xtab['instrument_name'] == 'WFC3/IR') & (xtab['area'] < 3.8)
+                try:
+                    subarray = (xtab['instrument_name'] == 'WFC3/IR') & (xtab['area'] < 3.8)
+                except:
+                    # Bug?
+                    xtab['instrument_name'].fill_value = 0
+                    subarray = (xtab['instrument_name'] == 'WFC3/IR') & (xtab['area'] < 3.8)
+                    
                 xtab = xtab[~subarray]
             
         ebv = utils.get_irsa_dust(ra, dec, type='SandF')
