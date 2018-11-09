@@ -477,7 +477,7 @@ def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486
     
     return orientat
     
-def show_footprints(tab, ax=None):
+def show_footprints(tab, ax=None, alpha=0.1):
     """
     Show pointing footprints in a plot
     """
@@ -504,10 +504,10 @@ def show_footprints(tab, ax=None):
         for p in poly:
             pclose = np.vstack([p, p[0,:]]) # repeat the first vertex to close
             
-            ax.plot(pclose[:,0], pclose[:,1], alpha=0.1, color=colors[tab['filter'][i]])
+            ax.plot(pclose[:,0], pclose[:,1], alpha=alpha, color=colors[tab['filter'][i]])
             
             # Plot a point at the first vertex, pixel x=y=0.
-            ax.scatter(pclose[0,0], pclose[0,1], marker='.', color=colors[tab['filter'][i]], alpha=0.1)
+            ax.scatter(pclose[0,0], pclose[0,1], marker='.', color=colors[tab['filter'][i]], alpha=alpha)
     
     return colors
     

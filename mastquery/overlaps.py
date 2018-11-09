@@ -33,7 +33,7 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, prefix='', suffix='', fractional_overlap=0):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, prefix='', suffix='', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -240,13 +240,13 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         
         # Show the parent table
         if show_parent:
-            colors = query.show_footprints(tab[idx], ax=ax)
+            colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha)
         
         ax.scatter(box[0], box[1], marker='+', color='k')
         
-        colors = query.show_footprints(xtab, ax=ax)
+        colors = query.show_footprints(xtab, ax=ax, alpha=tile_alpha)
         
-        patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, alpha=0.1, zorder=2)
+        patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, alpha=patch_alpha, zorder=2)
         
         ax.plot(xy[0], xy[1])
         ax.add_patch(patch1)
