@@ -43,6 +43,7 @@ def make_curl_script(table, level=None, script_name=None, inst_products=DEFAULT_
     import os
     
     BASE_URL = 'http://archives.esac.esa.int/ehst-sl-server/servlet/data-action?ARTIFACT_ID=' #J6FL25S4Q_RAW.FITS'
+    BASE_URL = 'http://hst.esac.esa.int/ehst-sl-server/servlet/data-action?ARTIFACT_ID=' #J6FL25S4Q_RAW.FITS'
     
     if s3_sync:
         # s3://stpubdata/hst/public/icwb/icwb1iu5q/icwb1iu5q_raw.fits    
