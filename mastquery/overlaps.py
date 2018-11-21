@@ -165,7 +165,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     
     for i in range(len(match_poly)):
         #i+=1
-        p = match_poly[i]
+        p = match_poly[i].buffer(0.0001)
                 
         #######
         # Query around central coordinate
@@ -223,11 +223,14 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 pshape[0] = pshape[0].union(pshape[k])
             
             try:
-                isect = p.intersection(pshape[0])
+                isect = p.intersection(pshape[0].buffer(0.0001))
                 pointing_overlaps[j] = isect.area > min_area*pshape[0].area
             except:
                 pointing_overlaps[j] = False
                 
+        if pointing_overlaps.sum() == 0:
+            return None
+        
         xtab = xtab[pointing_overlaps]
         
         # Unique targets
