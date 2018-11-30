@@ -138,22 +138,27 @@ def set_warnings(numpy_level='ignore', astropy_level='ignore'):
     np.seterr(all=numpy_level)
     warnings.simplefilter(astropy_level, category=AstropyWarning)
 
-def radec_to_targname(ra=0, dec=0, scl=10000, minute=True):
+def radec_to_targname(ra=0, dec=0, round_arcsec=(4, 60), targstr='j{rah}{ram}{ras}{sign}{ded}{dem}'):
     """Turn decimal degree coordinates into a string
     
     Example:
 
-        >>> from grizli.utils import radec_to_targname
+        >>> from mastquery.utils import radec_to_targname
         >>> print(radec_to_targname(ra=10., dec=-10.))
-        j004000-100000
+        j004000m1000
     
     Parameters
     -----------
     ra, dec : float
         Sky coordinates in decimal degrees
     
-    minute : bool
-        Round to arcminutes.
+    round_arcsec : (scalar, scalar) 
+        Round the coordinates to nearest value of `round`, in arcseconds.
+    
+    targstr : string
+        Build `targname` with this parent string.  Arguments 
+        `rah, ram, ras, sign, ded, dem, des` are computed from the (rounded)
+        target coordinates (`ra`, `dec`) and passed to `targstr.format`.
         
     Returns
     --------
@@ -163,34 +168,28 @@ def radec_to_targname(ra=0, dec=0, scl=10000, minute=True):
     """
     import astropy.coordinates 
     import astropy.units as u
+    
     import re
     import numpy as np
     
-    dec_scl = int(np.round(dec*scl))/scl
-    cosd = np.cos(dec_scl/180*np.pi)
-    ra_scl = int(np.round(ra*scl/cosd))/(scl/cosd)
+    cosd = np.cos(dec/180*np.pi)
+    scl = np.array(round_arcsec)/3600*np.array([360/24, 1])
+    
+    dec_scl = int(np.round(dec/scl[1]))*scl[1]
+    ra_scl = int(np.round(ra/scl[0]))*scl[0]
     
     coo = astropy.coordinates.SkyCoord(ra=ra_scl*u.deg, dec=dec_scl*u.deg)
     
     cstr = re.split('[hmsd.]', coo.to_string('hmsdms', precision=2))
-    targname = ('j{0}{1}'.format(''.join(cstr[0:3]), ''.join(cstr[4:7])))
-    targname = targname.replace(' ', '').replace('+','p').replace('-','m')
+    # targname = ('j{0}{1}'.format(''.join(cstr[0:3]), ''.join(cstr[4:7])))
+    # targname = targname.replace(' ', '').replace('+','p').replace('-','m')
 
-    if minute:
-        # Round to arcmin
-        rad, ram, ras = cstr[0:3]
-        ded, dem, des = cstr[4:7]
-        
-        sign = 'p' if ded[1] == '+' else 'm'
-        ded = ded[2:]
-        if (int(ras) > 30):
-            ram = '{0:02d}'.format(int(ram)+1)
-        
-        if (int(des) > 30):
-            dem = '{0:02d}'.format(int(dem)+1)
-        
-        targname = 'j{0}{1}{2}{3}{4}'.format(rad, ram, sign, ded.strip(), dem)
+    rah, ram, ras = cstr[0:3]
+    ded, dem, des = cstr[4:7]
+    sign = 'p' if ded[1] == '+' else 'm'
     
+    targname = targstr.format(rah=rah, ram=ram, ras=ras, ded=ded[2:], dem=dem, des=des, sign=sign)
+        
     return targname
     
 def get_irsa_dust(ra, dec, type='SandF'):

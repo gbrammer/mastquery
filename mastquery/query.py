@@ -179,7 +179,11 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     tab = Observations.query_criteria(**query_args)                               
     
     tab.meta['qtime'] = time.ctime(), 'Query timestamp'
-    
+    if box is not None:
+        tab.meta['boxra'] = ra, 'Query RA, degrees'
+        tab.meta['boxdec'] = dec, 'Query Decl., degrees'
+        tab.meta['boxrad'] = radius, 'Query radius, arcmin'
+        
     if len(tab) == 0:
         return tab
     
@@ -286,7 +290,7 @@ def modify_table(tab, get_exptime=True, rename_columns=DEFAULT_RENAME,
     
     # Add coordinate name
     if 'ra' in tab.colnames:
-        jtargname = [utils.radec_to_targname(ra=tab['ra'][i], dec=tab['dec'][i], scl=6) for i in range(len(tab))]
+        jtargname = [utils.radec_to_targname(ra=tab['ra'][i], dec=tab['dec'][i], round_arcsec=(4, 60), targstr='j{rah}{ram}{ras}{sign}{ded}{dem}') for i in range(len(tab))]
         tab['jtargname'] = jtargname
     
     fix_byte_columns(tab)

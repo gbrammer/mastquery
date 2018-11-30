@@ -33,7 +33,7 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, prefix='', suffix='', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -67,6 +67,12 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     
     use_parent : bool
         Use parent table rather than performing a new query
+    
+    targstr, prefix, suffix, jstr : str
+        The rootname is determined from a combination of these strings, 
+        with `targstr` passed to `~mastquery.utils.radec_to_targname` to 
+        return a string `jname` with the final root produced with `jstr` with 
+        format arguments `prefix`, `suffix` and `jname.
         
     Returns
     -------
@@ -180,8 +186,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         box = [ra, dec, np.maximum(xradius*1.5, yradius*1.5)]
         
         # Build target name from RA/Dec
-        jname = utils.radec_to_targname(box[0], box[1], scl=1000)
-        jname = prefix+jname+suffix
+        jname = utils.radec_to_targname(box[0], box[1], round_arcsec=(4, 60), targstr=targstr)
+        jname = jstr.format(prefix=prefix, jname=jname, suffix=suffix) #prefix+jname+suffix
         
         print('\n\n', i, jname, box[0], box[1])
 
@@ -245,8 +251,11 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         if show_parent:
             colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha)
         
-        ax.scatter(box[0], box[1], marker='+', color='k')
+        ax.scatter(box[0], box[1], marker='+', color='k', zorder=1e4, alpha=0.8)
         
+        if ('boxra' in tab.meta) & show_parent_box:
+            ax.scatter(tab.meta['boxra'][0], tab.meta['boxdec'][0], marker='*', color='r', zorder=1e4, alpha=0.8)
+            
         colors = query.show_footprints(xtab, ax=ax, alpha=tile_alpha)
         
         patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, alpha=patch_alpha, zorder=2)
