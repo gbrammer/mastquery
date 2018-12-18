@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# Demo things
+examples/j*
+examples/overla*
+
 # Distribution / packaging
 .Python
 build/
