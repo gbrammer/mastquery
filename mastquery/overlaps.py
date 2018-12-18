@@ -260,7 +260,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         
         patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, alpha=patch_alpha, zorder=2)
         
-        ax.plot(xy[0], xy[1])
+        ax.plot(xy[0], xy[1], alpha=patch_alpha, color=BLUE)
         ax.add_patch(patch1)
         
         ax.grid()
@@ -271,6 +271,10 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         dy = (yr[1]-yr[0])*60
         ax.set_title(jname)
         ax.set_xlim(ax.get_xlim()[::-1])
+        
+        cosd = np.cos(dec/180*np.pi)
+        ax.set_aspect(1/cosd)
+        
         fig.set_size_inches(5,5*dy/dx)
         
         # Add summary

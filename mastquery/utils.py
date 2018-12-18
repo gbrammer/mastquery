@@ -56,6 +56,95 @@ def mastQuery(request):
 
     return head,content
 
+NIRCam_LW_APERTURES = ['NIRCam/'+a for a in ['NRCB5_FULL', 'NRCA5_FULL']]
+NIRCam_SW_APERTURES = ['NIRCam/'+a for a in ['NRCA1_FULL', 'NRCA2_FULL', 'NRCA3_FULL', 'NRCA4_FULL', 'NRCB1_FULL', 'NRCB2_FULL', 'NRCB3_FULL', 'NRCB4_FULL']]
+MIRI_APERTURES = ['MIRI/MIRIM_ILLUM']
+NIRISS_APERTURES = ['NIRISS/NIS_CEN']
+NIRSpec_APERTURES = ['NIRSpec/'+a for a in ['NRS_FULL_MSA1', 'NRS_FULL_MSA2','NRS_FULL_MSA3','NRS_FULL_MSA4', 'NRS_FULL_IFU']]
+
+JWST_APERTURES = NIRCam_LW_APERTURES + NIRCam_SW_APERTURES + NIRSpec_APERTURES + NIRISS_APERTURES + MIRI_APERTURES
+
+def get_jwst_colors():
+    import matplotlib.pyplot as plt
+    # colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    # for i in enumerate(['NIRCam','NIRSpec','NIRISS','MIRI']):
+    #     ap_colors[ap] = colors[i]
+    
+    ap_colors = {'NIRCam':'#17becf','NIRSpec':'#bcbd22', 'NIRISS':'#1f77b4','MIRI':'#d62728', 'NIRCam-SW':'#e377c2', 'NIRCam-LW':'#9467bd'}
+    
+    return ap_colors
+    
+def get_jwst_apertures(ra=0, dec=0, pa_v3=0, ref_aper='NIRISS/NIS_CEN', aper_list=JWST_APERTURES, patch_kwargs={'alpha':0.5}, regions_file=None, ax=None):
+    """
+    
+    Get JWST aperture footprints using `pysiaf`.
+    
+    """
+    import matplotlib.pyplot as plt
+    
+    from collections import OrderedDict
+    import pysiaf
+    
+    ap_colors = get_jwst_colors()
+    
+    instruments = np.unique([ap.split('/')[0] for ap in aper_list+[ref_aper]])
+    siaf = {}
+    for inst in instruments:
+        siaf[inst] = pysiaf.Siaf(inst)
+    
+    spl = ref_aper.split('/')
+    ref_ap = siaf[spl[0]][spl[1]]
+    
+    theta = pa_v3/180*np.pi
+    _mat = np.array([[np.cos(theta), -np.sin(theta)],
+                     [np.sin(theta), np.cos(theta)]])
+    
+    aps = OrderedDict()
+    cosd = np.cos(dec/180*np.pi)
+    
+    for ap in aper_list:
+        spl = ap.split('/')
+        aper = siaf[spl[0]][spl[1]]
+        xy = np.array(aper.corners('tel')).T - ref_ap.reference_point('tel')
+        
+        # Close
+        xy = xy[list(range(4))+[0],:]
+        
+        xyr = np.dot(xy, _mat)
+        xydeg = xyr/3600.
+        xydeg[:,0] /= cosd
+        xysky = xydeg + np.array([ra, dec])
+        
+        if spl[0] == 'NIRCam':
+            if ap in NIRCam_LW_APERTURES:
+                inst = 'NIRCam-LW'
+            else:
+                inst = 'NIRCam-SW'
+        else:
+            inst = spl[0]
+            
+        aps[ap] = {'instrument':inst, 'aperture':spl[1], 
+                   'footprint':xysky.T, 'tel':xy.T, 'tel-rot':xyr.T, 
+                   'reference_point':ref_ap.reference_point('tel'),
+                   'patch':plt.Polygon(xysky, fc=ap_colors[inst],
+                                       ec=ap_colors[inst], **patch_kwargs)}
+        
+        pstr =  ', '.join(['{0:.5f}'.format(c) for c in xysky.flatten()])
+        aps[ap]['reg'] = 'polygon({0}) # '.format(pstr) + 'color={'+  ap_colors[inst] + '}'
+    
+    if regions_file is not None:
+        fp = open(regions_file,'w')
+        for ap in aps:
+            fp.write(aps[ap]['reg']+'\n')
+        fp.close()
+    
+    if ax is not None:
+        for ap in aps:
+            ax.add_patch(aps[ap]['patch'])
+            
+    return aps
+    
+        
 def mastJson2Table(jsonObj):
 
     dataTable = Table()

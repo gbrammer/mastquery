@@ -142,6 +142,8 @@ def get_products_table(query_tab, extensions=['RAW']):
 
 DEFAULT_QUERY_ASTROQUERY = {'intentType': ['science'], 'mtFlag': ['False'], 'obs_collection': ['HST']}
 
+JWST_QUERY = {'obs_collection': ['JWST']}
+
 def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
               sort_column=['obs_id', 'filter'],
               base_query=DEFAULT_QUERY_ASTROQUERY, **kwargs):
@@ -160,6 +162,11 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     for k in base_query:
         query_args[k] = base_query[k]
     
+    # JWST "expected data" won't have datasets to query for actual exptimes...
+    if 'obs_collection' in base_query:
+        if 'JWST' in base_query['obs_collection']:
+            get_exptime=False
+            
     for k in kwargs:
         if k == 'instruments':
             query_args['instrument_name'] = kwargs[k]
