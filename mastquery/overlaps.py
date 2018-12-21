@@ -511,7 +511,7 @@ def parse_overlap_table(tab):
 
     return names, properties
     
-def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True):
+def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
     """
     Associate visits by filter + position + PA
     """
@@ -524,9 +524,21 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True):
     dx = (tab['ra'] - np.median(tab['ra']))*cosd*60    
     dy = (tab['dec'] - np.median(tab['dec']))*60
     
-    ori = [query.get_orientat(tab['footprint'][i]) for i in range(len(tab))]
-    tab['orientat'] = ori
+    ori = np.array([query.get_orientat(tab['footprint'][i]) for i in range(len(tab))])
      
+    if hack_grism_pa:
+        ## At least one visit (Refsdal) had a 90 degree offset between 
+        ## the grism and associated direct exposures computed this way
+        is_grism = (tab['filter'] == 'G141') | (tab['filter'] == 'G102') | (tab['filter'] == 'G800L')
+        if is_grism.sum() > 0:
+            grism_progs = np.unique(tab['proposal_id'][is_grism])
+            grism_prog = tab['proposal_id'] == grism_progs[0]
+            for id in grism_progs:
+                grism_prog |= tab['proposal_id'] == id
+            
+            ori[grism_prog] = ori[grism_prog] % 90
+
+    tab['orientat'] = ori
     indices = np.arange(len(tab))
     assoc_idx = np.zeros(len(tab), dtype=int)-1
     
@@ -537,7 +549,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True):
                 
         assoc_idx[i] = len(assoc)
         
-        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'idx':len(assoc)}
+        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc)}
         
         for j in range(i+1, len(tab)):
             
@@ -545,13 +557,18 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True):
                 continue
                 
             f_j = tab['filter'][j]
+            pr_j = tab['proposal_id'][j]
             dpa = assoc_i['ori'] - ori[j]
             p_j = Point(dx[j], dy[j]).buffer(max_sep)
             
             # Has match
             test = (np.abs(dpa) < max_pa) & (p_j.intersects(assoc_i['pos']))
-            if match_filter:
+            if match_filter & (not parse_for_grisms):
                 test &= (f_j == assoc_i['filter'])
+            
+            if match_program:
+                test &= (pr_j == assoc_i['proposal_id'])
+                
             
             if test:
                 #print('Has match!', j)
@@ -562,7 +579,27 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True):
                 assoc_i['indices'].append(j)
         
         assoc.append(assoc_i)
-        
+    
+    if match_filter & (parse_for_grisms):
+        # Now split assoc that *don't* have grisms
+        assoc_orig = assoc_idx*1
+        new_i = 0
+        assoc_idx = assoc_orig*0
+        for ix in np.unique(assoc_orig):
+            sel = assoc_orig == ix
+            filts = list(np.unique(tab['filter'][sel]))
+            is_grism = np.sum([f in filts for f in ['G800L','G102','G141']]) > 0
+            
+            if is_grism:
+                #print('XXX'); break
+                assoc_idx[sel] = new_i
+                new_i += 1
+            else:
+                for filt in filts:
+                    sel_filt = sel & (tab['filter'] == filt)
+                    assoc_idx[sel_filt] = new_i
+                    new_i += 1
+                
     tab['assoc_idx'] = assoc_idx
     
     if False:
