@@ -511,9 +511,9 @@ def parse_overlap_table(tab):
 
     return names, properties
     
-def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
+def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filter=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
     """
-    Associate visits by filter + position + PA
+    Associate visits by filter + position + PA + date
     """
     from . import query
     
@@ -549,7 +549,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True, match
                 
         assoc_idx[i] = len(assoc)
         
-        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc)}
+        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc), 't_min':tab['t_min'][i]}
         
         for j in range(i+1, len(tab)):
             
@@ -559,10 +559,14 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, match_filter=True, match
             f_j = tab['filter'][j]
             pr_j = tab['proposal_id'][j]
             dpa = assoc_i['ori'] - ori[j]
+            dt = assoc_i['t_min'] - tab['t_min'][j]
             p_j = Point(dx[j], dy[j]).buffer(max_sep)
             
             # Has match
             test = (np.abs(dpa) < max_pa) & (p_j.intersects(assoc_i['pos']))
+            
+            test &= np.abs(dt) < max_time
+            
             if match_filter & (not parse_for_grisms):
                 test &= (f_j == assoc_i['filter'])
             
