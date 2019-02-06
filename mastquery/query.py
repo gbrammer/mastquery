@@ -522,4 +522,26 @@ def show_footprints(tab, ax=None, alpha=0.1):
     
     return colors
     
+def add_aladdin(tab, rd_cols=['ra', 'dec'], fov=0.5, size=(400,200), default_view="P/DSS2/color"):
+    """
+    Add AladinLite DIV column to the table
+    
+    fov : fov in degrees
+    size : size of DIVs (w, h) in pixels (w, h)
+    
+    """
+    # <!-- include Aladin Lite CSS file in the head section of your page -->
+    # <link rel="stylesheet" href="//aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.css" />
+    # 
+    # <!-- you can skip the following line if your page already integrates the jQuery library -->
+    # <script type="text/javascript" src="//code.jquery.com/jquery-1.12.1.min.js" charset="utf-8"></script>
+    
+    ala = ["""    <div id="aladin-lite-div-{i}" style="width:{wsize}px;height:{hsize}px;"></div>
+    <script type="text/javascript" src="http://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.js" charset="utf-8"></script>
+    <script type="text/javascript">
+        var aladin = A.aladin('#aladin-lite-div-{i}', xxxsurvey: "{survey}", fov:{fov}, target: "{ra} {dec}"yyy);
+    </script></div>""".format(i=i, ra=row[rd_cols[0]], dec=row[rd_cols[1]], survey=default_view, fov=fov, hsize=size[1], wsize=size[0]).replace('xxx','{').replace('yyy','}') for i, row in enumerate(tab)]
+    
+    tab['aladin'] = ala
+    
 
