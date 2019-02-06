@@ -9,6 +9,9 @@ import numpy as np
 
 from astropy.table import Table
 
+# character to skip clearing line on STDOUT printing
+NO_NEWLINE = '\x1b[1A\x1b[1M'
+
 try: # Python 3.x
     from urllib.parse import quote as urlencode
     from urllib.request import urlretrieve

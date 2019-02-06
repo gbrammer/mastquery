@@ -33,7 +33,7 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -111,7 +111,9 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     
     # Loop through polygons and combine those that overlap
     for i in range(1,len(tab)):
-        #print('Parse', i)
+        if verbose > 1:
+            print(utils.NO_NEWLINE+'Parse {0:4d}'.format(i))
+        
         has_match = False
         for j in range(len(match_poly)):
             isect = match_poly[j].intersection(polygons[i])
@@ -142,7 +144,9 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         match_ids = [mids[0]]
     
         for i in range(1,len(mpolygons)):
-            #print(i)
+            if verbose > 1:
+                print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
+                
             has_match = False
             for j in range(len(match_poly)):
                 isect = match_poly[j].intersection(mpolygons[i])
@@ -158,24 +162,26 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 match_poly.append(mpolygons[i])
                 match_ids.append(mids[i])
         
-        print('Iter #{0}, N_Patch = {1}'.format(iter+1, len(match_poly)))
+        if verbose > 0:
+            print('Iter #{0}, N_Patch = {1}'.format(iter+1, len(match_poly)))
+        
         if len(mpolygons) == len(match_poly):
             break
     
-    np.save('overlaps.py', [match_poly, match_ids])
+    np.save('overlaps.npy', [match_poly, match_ids])
             
     # Save figures and tables for the unique positions
     BLUE = '#6699cc'
     
     tables = []
     
-    for i in range(len(match_poly)):
+    for ipo in range(len(match_poly)):
         #i+=1
-        p = match_poly[i].buffer(0.0001)
+        p = match_poly[ipo].buffer(0.0001)
                 
         #######
         # Query around central coordinate
-        idx = np.array(match_ids[i])
+        idx = np.array(match_ids[ipo])
         ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])
         
         # Get poly size
@@ -189,17 +195,20 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         jname = utils.radec_to_targname(box[0], box[1], round_arcsec=(4, 60), targstr=targstr)
         jname = jstr.format(prefix=prefix, jname=jname, suffix=suffix) #prefix+jname+suffix
         
-        print('\n\n', i, jname, box[0], box[1])
 
         if (os.path.exists('{0}_footprint.pdf'.format(jname))) & SKIP:
+            print('\n********** SKIP *********\n', i, jname, box[0], box[1])
             continue
-                            
+        else:
+            print('\n\n', i, jname, box[0], box[1])
+            
         if use_parent:
             xtab = tab
         else:
             try:
                 xtab = query.run_query(box=box, proposal_id=proposal_id, instruments=instruments, filters=filters, base_query=base_query, **extra)
             except:
+                print('Failed!')
                 pass
                 
             if not include_subarrays:
@@ -235,7 +244,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 pointing_overlaps[j] = False
                 
         if pointing_overlaps.sum() == 0:
-            return None
+            continue
         
         xtab = xtab[pointing_overlaps]
         
@@ -511,7 +520,7 @@ def parse_overlap_table(tab):
 
     return names, properties
     
-def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filter=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
+def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
     """
     Associate visits by filter + position + PA + date
     """
@@ -549,7 +558,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
                 
         assoc_idx[i] = len(assoc)
         
-        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc), 't_min':tab['t_min'][i]}
+        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc), 't_min':tab['t_min'][i], 'instrument_name':tab['instrument_name'][i]}
         
         for j in range(i+1, len(tab)):
             
@@ -558,6 +567,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
                 
             f_j = tab['filter'][j]
             pr_j = tab['proposal_id'][j]
+            instr_j = tab['instrument_name'][j]
             dpa = assoc_i['ori'] - ori[j]
             dt = assoc_i['t_min'] - tab['t_min'][j]
             p_j = Point(dx[j], dy[j]).buffer(max_sep)
@@ -566,14 +576,16 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
             test = (np.abs(dpa) < max_pa) & (p_j.intersects(assoc_i['pos']))
             
             test &= np.abs(dt) < max_time
-            
+
+            if match_instrument:
+                test &= (instr_j == assoc_i['instrument_name'])
+                
             if match_filter & (not parse_for_grisms):
                 test &= (f_j == assoc_i['filter'])
             
             if match_program:
                 test &= (pr_j == assoc_i['proposal_id'])
                 
-            
             if test:
                 #print('Has match!', j)
                 #break
