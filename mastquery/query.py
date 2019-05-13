@@ -42,7 +42,7 @@ DEFAULT_COLUMN_FORMAT = {'t_min':'.4f',
 # Don't get calibrations.  Can't use "INTENT LIKE 'SCIENCE'" because some 
 # science observations are flagged as 'Calibration' in the ESA HSA.
 #DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':['False']}
-DEFAULT_QUERY = {'obs_collection':['HST'], 'intentType':['science'], 'mtFlag':['False']}
+DEFAULT_QUERY = {'obs_collection':['HST'], 'intentType':['science'], 'mtFlag':['False']} #, 'dataRights':['PUBLIC']}
 
 # DEFAULT_EXTRA += ["TARGET.TARGET_NAME NOT LIKE '{0}'".format(calib) 
 #                  for calib in ['DARK','EARTH-CALIB', 'TUNGSTEN', 'BIAS',
@@ -151,7 +151,7 @@ JWST_QUERY = {'obs_collection': ['JWST']}
 
 def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
               sort_column=['obs_id', 'filter'],
-              base_query=DEFAULT_QUERY_ASTROQUERY, **kwargs):
+              base_query=DEFAULT_QUERY_ASTROQUERY.copy(), **kwargs):
     """
     Run MAST query with astroquery.mast.  
     
@@ -159,8 +159,11 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     can be used for the query.
     """                  
     import time
+    
     from astroquery.mast import Observations
     from astropy.coordinates import SkyCoord
+    from astropy.io.misc import yaml
+    
     import astropy.units as u
            
     query_args = {}
@@ -191,10 +194,14 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     tab = Observations.query_criteria(**query_args)                               
     
     tab.meta['qtime'] = time.ctime(), 'Query timestamp'
+    
     if box is not None:
         tab.meta['boxra'] = ra, 'Query RA, degrees'
         tab.meta['boxdec'] = dec, 'Query Decl., degrees'
         tab.meta['boxrad'] = radius, 'Query radius, arcmin'
+    
+    str_args = yaml.dump(query_args).replace('\n', ';;')
+    tab.meta['obsquery'] = str_args, 'Full query string, replace ;; with newline'
         
     if len(tab) == 0:
         return tab

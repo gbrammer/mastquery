@@ -18,6 +18,21 @@ version = p.communicate()[0].decode("utf-8").strip()
 # version = "0.3.0" # New target formatting
 version = "0.4.0" # Try to use astroquery rather than MAST CAOM
 
+# Set this to true to add install_requires to setup
+# Turned off for incremental builds as it kills "reload(mastquery.query)" 
+if True:
+    install_requires=[
+         'astropy>=2.0.0',
+         'astroquery>=0.3.0',
+         'lxml>=3.8.0',
+         'numpy>=1.10.2',
+         'geos>=0.2.1',
+         'shapely>=1.5.16',
+         'matplotlib>=2.0.2',
+         'descartes>=1.0.2']
+else:
+    install_requires = []    
+    
 #lines = open('grizli/version.py').readlines()
 version_str = """# git describe --tags
 __version__ = "{0}"\n""".format(version)
@@ -49,14 +64,6 @@ setup(
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Astronomy',
     ],
-    install_requires=[
-         'astropy>=2.0.0',
-         'lxml>=3.8.0',
-         'numpy>=1.10.2',
-         'geos>=0.2.1',
-         'shapely>=1.5.16',
-         'matplotlib>=2.0.2',
-         'descartes>=1.0.2'
-    ],
+    install_requires=install_requires,
     package_data={'mastquery': []},
 )

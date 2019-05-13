@@ -33,7 +33,7 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -73,6 +73,10 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         with `targstr` passed to `~mastquery.utils.radec_to_targname` to 
         return a string `jname` with the final root produced with `jstr` with 
         format arguments `prefix`, `suffix` and `jname.
+    
+    keep_single_name : bool
+        If only a single polygon is found, try to use the RA/DEC keys of the 
+        parent table metadata as the output key.
         
     Returns
     -------
@@ -91,7 +95,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
 
     from shapely.geometry import Polygon
     from descartes import PolygonPatch
-            
+        
+    import time
     # Get shapely polygons for each exposures
     polygons = []
     
@@ -175,17 +180,25 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     
     tables = []
     
-    for ipo in range(len(match_poly)):
+    NPOLYS = len(match_poly)
+    
+    for ipo in range(NPOLYS):
         #i+=1
         p = match_poly[ipo].buffer(0.0001)
                 
         #######
         # Query around central coordinate
         idx = np.array(match_ids[ipo])
-        ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])
+        if (NPOLYS == 1) & keep_single_name:
+            try:
+                ra, dec = tab.meta['RA'], tab.meta['DEC']
+            except:
+                ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])                
+        else:
+            ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])
         
         # Get poly size
-        xy = p.convex_hull.boundary.xy
+        xy = np.array(p.convex_hull.boundary.xy)
         xradius = np.abs(xy[0]-ra).max()*np.cos(dec/180*np.pi)*60
         yradius = np.abs(xy[1]-dec).max()*60
 
@@ -227,7 +240,10 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         xtab.meta['RA'] = ra
         xtab.meta['DEC'] = dec
         xtab.meta['MW_EBV'] = ebv
-              
+        xtab.meta['FOLAP'] = (fractional_overlap, 'Fractional overlap parameter')
+        xtab.meta['MIN_AREA'] = (min_area, 'Minimum overlap fraction')
+        xtab.meta['BUFFER'] = (buffer_arcmin, 'Buffer for overlaps in arcmin')
+        
         # Only include ancillary data that directly overlaps with the primary
         # polygon
         pointing_overlaps = np.zeros(len(xtab), dtype=bool)
@@ -317,7 +333,10 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             ax.text(0.95, 0.97-dyi*i, '{1:>20s}  {2:>3d}  {3:>8.1f}\n'.format(jname, filt, mf.sum(), xtab['exptime'][mf].sum()), ha='right', va='top', transform=ax.transAxes, fontsize=6, color=c)
             
         fp.close()
-                
+        
+        # Timestamp        
+        ax.text(0.97, 0.03, time.ctime(), fontsize=5, transform=ax.transAxes, ha='right', va='bottom')
+        
         fig.tight_layout(pad=0.5)
         
         # Save figure and table
