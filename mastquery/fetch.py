@@ -48,6 +48,7 @@ def make_curl_script(table, level=None, script_name=None, inst_products=DEFAULT_
     if s3_sync:
         # s3://stpubdata/hst/public/icwb/icwb1iu5q/icwb1iu5q_raw.fits    
         BASE_URL = 's3://stpubdata/hst/public/'
+        #BASE_URL = 's3://stpubdata/hst/public/'
         
     if level is None:
         # Get RAW for WFC3/IR, FLC for UVIS and ACS

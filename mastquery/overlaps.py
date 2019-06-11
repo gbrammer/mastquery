@@ -33,7 +33,78 @@ def test():
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True):
+def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
+    """
+    """
+    import copy
+    import numpy as np
+    
+    match_poly = [polygons[0]]
+    match_ids = [[0]]
+    
+    # Loop through polygons and combine those that overlap
+    for i in range(1,len(polygons)):
+        if verbose > 1:
+            print(utils.NO_NEWLINE+'Parse {0:4d}'.format(i))
+        
+        has_match = False
+        for j in range(len(match_poly)):
+            isect = match_poly[j].intersection(polygons[i])
+            #print(tab['target'][i], i, isect.area > 0)
+            if fractional_overlap > 0:
+                test_area = fractional_overlap*polygons[i].area
+            else:
+                test_area = 0.5/3600.
+                
+            if isect.area > test_area:
+                #print(isect.area*3600)
+                match_poly[j] = match_poly[j].union(polygons[i])
+                match_ids[j].append(i)
+                has_match = True
+                continue
+                
+        if not has_match:
+            match_poly.append(polygons[i])
+            match_ids.append([i])
+    
+    ##################
+    # Iterate joining polygons
+    for iter in range(3):
+        mpolygons = copy.deepcopy(match_poly)
+        mids = copy.deepcopy(match_ids)
+    
+        match_poly = [mpolygons[0]]
+        match_ids = [mids[0]]
+    
+        for i in range(1,len(mpolygons)):
+            if verbose > 1:
+                print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
+                
+            has_match = False
+            for j in range(len(match_poly)):
+                isect = match_poly[j].intersection(mpolygons[i])
+                #print(tab['target'][i], i, isect.area > 0)
+                if isect.area > fractional_overlap*mpolygons[i].area:
+                    #print(isect.area*3600)
+                    match_poly[j] = match_poly[j].union(mpolygons[i])
+                    match_ids[j].extend(mids[i])
+                    has_match = True
+                    continue
+
+            if not has_match:
+                match_poly.append(mpolygons[i])
+                match_ids.append(mids[i])
+        
+        if verbose > 0:
+            print('Iter #{0}, N_Patch = {1}'.format(iter+1, len(match_poly)))
+        
+        if len(mpolygons) == len(match_poly):
+            break
+    
+    #np.save('overlaps.npy', [match_poly, match_ids])
+    return match_poly, match_ids
+    
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -103,77 +174,96 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     poly_buffer = buffer_arcmin/60 # ~1 arcmin, but doesn't account for cos(dec)
     #poly_buffer = 0.5/60 # ~1 arcmin, but doesn't account for cos(dec)
     
-    for i in range(len(tab)):
-        poly = query.parse_polygons(tab['footprint'][i])#[0]
-        pshape = [Polygon(p) for p in poly]
-        for i in range(1,len(poly)):
-            pshape[0] = pshape[0].union(pshape[i])
-        
-        polygons.append(pshape[0].buffer(poly_buffer))
-    
-    match_poly = [polygons[0]]
-    match_ids = [[0]]
-    
-    # Loop through polygons and combine those that overlap
-    for i in range(1,len(tab)):
-        if verbose > 1:
-            print(utils.NO_NEWLINE+'Parse {0:4d}'.format(i))
-        
-        has_match = False
-        for j in range(len(match_poly)):
-            isect = match_poly[j].intersection(polygons[i])
-            #print(tab['target'][i], i, isect.area > 0)
-            if fractional_overlap > 0:
-                test_area = fractional_overlap*polygons[i].area
-            else:
-                test_area = 0.5/3600.
-                
-            if isect.area > test_area:
-                #print(isect.area*3600)
-                match_poly[j] = match_poly[j].union(polygons[i])
-                match_ids[j].append(i)
-                has_match = True
-                continue
-                
-        if not has_match:
-            match_poly.append(polygons[i])
-            match_ids.append([i])
-    
-    ##################
-    # Iterate joining polygons
-    for iter in range(3):
-        mpolygons = copy.deepcopy(match_poly)
-        mids = copy.deepcopy(match_ids)
-    
-        match_poly = [mpolygons[0]]
-        match_ids = [mids[0]]
-    
-        for i in range(1,len(mpolygons)):
-            if verbose > 1:
-                print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
-                
-            has_match = False
-            for j in range(len(match_poly)):
-                isect = match_poly[j].intersection(mpolygons[i])
-                #print(tab['target'][i], i, isect.area > 0)
-                if isect.area > fractional_overlap*mpolygons[i].area:
-                    #print(isect.area*3600)
-                    match_poly[j] = match_poly[j].union(mpolygons[i])
-                    match_ids[j].extend(mids[i])
-                    has_match = True
+    if isinstance(tab, Polygon):
+        poly_query = True
+        polygons = [tab]
+        use_parent = False
+        show_parent = True
+    else:
+        poly_query = False
+        for i in range(len(tab)):
+            poly = query.parse_polygons(tab['footprint'][i])#[0]
+            pshape = None
+            for pi in poly:
+                try:
+                    psh = Polygon(pi)
+                except:
                     continue
-
-            if not has_match:
-                match_poly.append(mpolygons[i])
-                match_ids.append(mids[i])
+                    
+                if pshape is None:
+                    pshape = psh
+                else:
+                    pshape = pshape.union(psh)
         
-        if verbose > 0:
-            print('Iter #{0}, N_Patch = {1}'.format(iter+1, len(match_poly)))
-        
-        if len(mpolygons) == len(match_poly):
-            break
+            polygons.append(pshape.buffer(poly_buffer))
     
-    np.save('overlaps.npy', [match_poly, match_ids])
+    # match_poly = [polygons[0]]
+    # match_ids = [[0]]
+    # 
+    # # Loop through polygons and combine those that overlap
+    # for i in range(1,len(polygons)):
+    #     if verbose > 1:
+    #         print(utils.NO_NEWLINE+'Parse {0:4d}'.format(i))
+    #     
+    #     has_match = False
+    #     for j in range(len(match_poly)):
+    #         isect = match_poly[j].intersection(polygons[i])
+    #         #print(tab['target'][i], i, isect.area > 0)
+    #         if fractional_overlap > 0:
+    #             test_area = fractional_overlap*polygons[i].area
+    #         else:
+    #             test_area = 0.5/3600.
+    #             
+    #         if isect.area > test_area:
+    #             #print(isect.area*3600)
+    #             match_poly[j] = match_poly[j].union(polygons[i])
+    #             match_ids[j].append(i)
+    #             has_match = True
+    #             continue
+    #             
+    #     if not has_match:
+    #         match_poly.append(polygons[i])
+    #         match_ids.append([i])
+    # 
+    # ##################
+    # # Iterate joining polygons
+    # for iter in range(3):
+    #     mpolygons = copy.deepcopy(match_poly)
+    #     mids = copy.deepcopy(match_ids)
+    # 
+    #     match_poly = [mpolygons[0]]
+    #     match_ids = [mids[0]]
+    # 
+    #     for i in range(1,len(mpolygons)):
+    #         if verbose > 1:
+    #             print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
+    #             
+    #         has_match = False
+    #         for j in range(len(match_poly)):
+    #             isect = match_poly[j].intersection(mpolygons[i])
+    #             #print(tab['target'][i], i, isect.area > 0)
+    #             if isect.area > fractional_overlap*mpolygons[i].area:
+    #                 #print(isect.area*3600)
+    #                 match_poly[j] = match_poly[j].union(mpolygons[i])
+    #                 match_ids[j].extend(mids[i])
+    #                 has_match = True
+    #                 continue
+    # 
+    #         if not has_match:
+    #             match_poly.append(mpolygons[i])
+    #             match_ids.append(mids[i])
+    #     
+    #     if verbose > 0:
+    #         print('Iter #{0}, N_Patch = {1}'.format(iter+1, len(match_poly)))
+    #     
+    #     if len(mpolygons) == len(match_poly):
+    #         break
+    
+    if os.path.exists(poly_file) & (load_poly_file):
+        match_poly, match_ids = np.load(poly_file, allow_pickle=True)
+    else:
+        match_poly, match_ids = parse_overlap_polygons(polygons, fractional_overlap=fractional_overlap, verbose=verbose)
+        np.save(poly_file, [match_poly, match_ids])
             
     # Save figures and tables for the unique positions
     BLUE = '#6699cc'
@@ -189,13 +279,18 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         #######
         # Query around central coordinate
         idx = np.array(match_ids[ipo])
-        if (NPOLYS == 1) & keep_single_name:
-            try:
-                ra, dec = tab.meta['RA'], tab.meta['DEC']
-            except:
-                ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])                
+        if poly_query:
+            ra = float(p.centroid.x)
+            dec = float(p.centroid.y)
         else:
-            ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])
+            if (NPOLYS == 1) & keep_single_name:
+                try:
+                    ra, dec = tab.meta['RA'], tab.meta['DEC']
+                except:
+                    ra = np.mean(tab['ra'][idx])
+                    dec = np.mean(tab['dec'][idx])                
+            else:
+                ra, dec = np.mean(tab['ra'][idx]), np.mean(tab['dec'][idx])
         
         # Get poly size
         xy = np.array(p.convex_hull.boundary.xy)
@@ -208,12 +303,11 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         jname = utils.radec_to_targname(box[0], box[1], round_arcsec=(4, 60), targstr=targstr)
         jname = jstr.format(prefix=prefix, jname=jname, suffix=suffix) #prefix+jname+suffix
         
-
         if (os.path.exists('{0}_footprint.pdf'.format(jname))) & SKIP:
-            print('\n********** SKIP *********\n', i, jname, box[0], box[1])
+            print('\n********** SKIP *********\n', ipo+1, jname, box[0], box[1])
             continue
         else:
-            print('\n\n', i, jname, box[0], box[1])
+            print('\n\n', ipo+1, jname, box[0], box[1])
             
         if use_parent:
             xtab = tab
@@ -222,7 +316,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 xtab = query.run_query(box=box, proposal_id=proposal_id, instruments=instruments, filters=filters, base_query=base_query, **extra)
             except:
                 print('Failed!')
-                pass
+                continue
                 
             if not include_subarrays:
                 query.set_area_column(xtab)
@@ -235,7 +329,12 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                     
                 xtab = xtab[~subarray]
             
-        ebv = utils.get_irsa_dust(ra, dec, type='SandF')
+        try:
+            ebv = utils.get_irsa_dust(ra, dec, type='SandF')
+        except:
+            print('Couldn\'t connect to IRSA dust server, setting MW_EBV=0')
+            ebv = 0
+            
         xtab.meta['NAME'] = jname
         xtab.meta['RA'] = ra
         xtab.meta['DEC'] = dec
@@ -249,13 +348,22 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         pointing_overlaps = np.zeros(len(xtab), dtype=bool)
         for j in range(len(xtab)):
             poly = query.parse_polygons(xtab['footprint'][j])#[0]
-            pshape = [Polygon(pi) for pi in poly]
-            for k in range(1,len(poly)):
-                pshape[0] = pshape[0].union(pshape[k])
-            
+
+            pshape = None
+            for pi in poly:
+                try:
+                    psh = Polygon(pi)
+                except:
+                    continue
+                    
+                if pshape is None:
+                    pshape = psh
+                else:
+                    pshape = pshape.union(psh)
+                                    
             try:
-                isect = p.intersection(pshape[0].buffer(0.0001))
-                pointing_overlaps[j] = isect.area > min_area*pshape[0].area
+                isect = p.intersection(pshape.buffer(0.0001))
+                pointing_overlaps[j] = isect.area > min_area*pshape.area
             except:
                 pointing_overlaps[j] = False
                 
@@ -274,12 +382,17 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         
         # Show the parent table
         if show_parent:
-            colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha)
+            if poly_query:
+                ax.add_patch(PolygonPatch(p, alpha=parent_alpha))
+            else:
+                colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha)
         
         ax.scatter(box[0], box[1], marker='+', color='k', zorder=1e4, alpha=0.8)
         
-        if ('boxra' in tab.meta) & show_parent_box:
-            ax.scatter(tab.meta['boxra'][0], tab.meta['boxdec'][0], marker='*', color='r', zorder=1e4, alpha=0.8)
+        if not poly_query:
+            if ('boxra' in tab.meta) & show_parent_box:
+                ax.scatter(tab.meta['boxra'][0], tab.meta['boxdec'][0],
+                           marker='*', color='r', zorder=1e4, alpha=0.8)
             
         colors = query.show_footprints(xtab, ax=ax, alpha=tile_alpha)
         
@@ -300,13 +413,16 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         cosd = np.cos(dec/180*np.pi)
         ax.set_aspect(1/cosd)
         
-        fig.set_size_inches(5,5*dy/dx)
+        fig.set_size_inches(5,5*np.clip(dy/dx, 0.2, 5))
         
         # Add summary
         fp = open('{0}_info.dat'.format(jname),'w')
-        dyi = 0.02*dx/dy
+        dyi = 0.02*np.clip(dx/dy, 0.2, 5)
         
-        ax.text(0.05, 0.97, '{0:>13.5f} {1:>13.5f}  E(B-V)={2:.3f}'.format(ra, dec, ebv), ha='left', va='top', transform=ax.transAxes, fontsize=6)
+        title = '{0:>13.5f} {1:>13.5f}  E(B-V)={2:.3f}'.format(ra, dec, ebv)
+        fp.write('# {0}\n'.format(title))
+        
+        ax.text(0.05, 0.97, title, ha='left', va='top', transform=ax.transAxes, fontsize=6)
         
         for i, t in enumerate(np.unique(xtab['proposal_id'])):
             fp.write('proposal_id {0} {1}\n'.format(jname, t))
@@ -514,14 +630,23 @@ def parse_overlap_table(tab):
                 poly = query.old_parse_polygons(polystr)
                 
             PAs.append(int(np.round(query.get_orientat(polystr))))
-            pshape = [Polygon(p) for p in poly]
-            for j in range(1,len(poly)):
-                pshape[0] = pshape[0].union(pshape[j])
+
+            pshape = None
+            for pi in poly:
+                try:
+                    psh = Polygon(pi)
+                except:
+                    continue
+                    
+                if pshape is None:
+                    pshape = psh
+                else:
+                    pshape = pshape.union(psh)
             
             if i == 0:
-                gpoly = pshape[0]
+                gpoly = pshape
             else:
-                gpoly = gpoly.union(pshape[0])
+                gpoly = gpoly.union(pshape)
         
         cosd = np.cos(tab.meta['DEC']/180*np.pi)
         area = gpoly.area*3600.*cosd
