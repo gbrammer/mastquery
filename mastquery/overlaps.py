@@ -2,6 +2,7 @@
 Scripts to find overlapping HST data
 """
 
+import time
 from . import query, utils
   
 def test():
@@ -663,8 +664,301 @@ def parse_overlap_table(tab):
         properties.append(len(np.unique(PAs)))
 
     return names, properties
+
+ASSOC_ARGS = {'max_pa':2, 'max_sep':0.5, 'max_time':1.e4/86400., 'match_filter':True, 'match_instrument':True, 'match_program':True, 'hack_grism_pa':True, 'parse_for_grisms':True}
+
+def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS, make_figure=True, xsize=6, nlabel=3, assoc_min=0, fill_grism=True):
+    """
+    Split table by groups from `compute_associations`
     
-def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
+    assoc_args passed directly to `compute_associations`.
+    
+    """ 
+    from collections import OrderedDict
+            
+    import numpy as np
+    
+    from shapely.geometry import Polygon
+        
+    if root is None:
+        root = tab.meta['NAME']
+    
+    if ('assoc_idx' not in tab.colnames) | (force_split):
+        compute_associations(tab, **assoc_args)
+        tab['assoc_idx'] += assoc_min
+        
+    polys = OrderedDict()
+    
+    tab_poly = None
+    
+    for ix in np.unique(tab['assoc_idx']):
+        sel = tab['assoc_idx'] == ix
+        #orient = np.round(np.median(tab['orientat'][sel])/round_pa)*round_pa
+        
+        prog = tab['obs_id'][sel][0][1:4]
+        visit = tab['obs_id'][sel][0][4:6]
+
+        targ = '-'.join(np.unique(tab['target'][sel])).lower()
+        filt = '-'.join(np.unique(tab['filter'][sel])).lower()
+        inst = '-'.join(np.unique(tab['instrument_name'][sel])).lower()
+        inst = inst.replace('/','')
+        
+        label = '{0}_{5:04d}_{1}_{2}_{3}_{4}'
+        label = label.format(root, prog, targ, inst, filt, ix)
+        
+        poly_i = None
+        for fp in tab['footprint'][sel]:
+            for p in query.parse_polygons(fp):
+                p_j = Polygon(p).buffer(0.001)
+                if tab_poly is None:
+                    tab_poly = p_j.buffer(0.001)
+                
+                if not tab_poly.buffer(2).intersects(p_j.buffer(2)):
+                    print('Skip')
+                    continue
+                    
+                if poly_i is None:
+                    poly_i = Polygon(p)
+                else:
+                    if not poly_i.buffer(2).intersects(p_j.buffer(2)):
+                        print('x Skip')
+                        continue
+
+                    poly_i = poly_i.union(p_j)
+                        
+        polys[label] = poly_i
+    
+    if make_figure:
+        fig = make_association_figure(tab, polys, root=root, xsize=xsize, nlabel=nlabel, fill_grism=fill_grism)
+        return polys, fig
+    else:
+        return polys
+    
+def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True):
+    """Make a figure to show associations
+    
+    """
+    import numpy as np
+    
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+    from descartes import PolygonPatch
+    
+    from astropy import units as u
+    from astropy.coordinates import angles
+
+    #cc = plt.rcParams['axes.prop_cycle']
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    if root is None:
+        root = tab.meta['NAME']
+    
+    handles, labels = [], []
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111) #, projection=pywcs.WCS())
+
+    sc = ax.scatter(tab.meta['RA'], tab.meta['DEC'], marker='+', c='k')
+    title = '{0}  ({1:.4f}, {2:.4f})  E(B-V)={3:.03f}'.format(root, tab.meta['RA'], tab.meta['DEC'], tab.meta['MW_EBV'])
+    ax.set_title(title)
+    
+    #labels.append(label)
+    
+    filter_list = []
+    full_filter_list = [f.split('_')[-1].split('-')[-1] for f in polys]
+    so = np.argsort(full_filter_list)
+    keys = list(polys.keys())
+    
+    grism_patches = {}
+    grism_colors = {'g141':'r', 'g102':'orange', 'g800l':'b'}
+    
+    xra, yra = None, None
+    for i in so:
+        # in polys:
+        f = keys[i]
+        p_i = polys[f]
+        xfilt_i = f.split('_')[-1]
+        filt_i = xfilt_i.split('-')[-1]
+        
+        if hasattr(p_i, '__len__'):
+            all_p = [p for p in p_i]
+        else:
+            all_p = [p_i]
+        
+        for p in all_p:
+            try:
+                xb, yb = np.array(p.boundary.xy)
+            except:
+                continue
+                
+            if xra is None:
+                xra = [xb.min(), xb.max()]
+                yra = [yb.min(), yb.max()]
+            else:
+                xra = [np.minimum(xb.min(), xra[0]), 
+                       np.maximum(xb.max(), xra[1])]
+                   
+                yra = [np.minimum(yb.min(), yra[0]), 
+                       np.maximum(yb.max(), yra[1])]
+
+            ax.set_xlim(xra[::-1])
+            ax.set_ylim(yra)
+        
+            if 'g141' in xfilt_i:
+                has_grism = True
+            elif 'g102' in xfilt_i:
+                has_grism = True
+            elif 'g800l' in xfilt_i:
+                has_grism = True    
+            else:
+                c_i = colors[hash(filt_i) % len(colors)]
+                has_grism = False
+                grism_colors[filt_i] = c_i
+                has_grism = True
+            
+            if filt_i in grism_colors:
+                c_i = grism_colors[filt_i]
+                
+            fc = 'None'
+            zo = -1000
+            if highlight is not None:
+                if f == highlight:
+                    fc = c_i
+                    zo = 1000
+            
+            alpha = 0.4
+            
+            if fill_grism & has_grism:                
+                #fc = c_i
+                #zo = -100000
+                #alpha = 0.25
+                if filt_i in grism_patches:
+                    grism_patches[filt_i] = grism_patches[filt_i].union(p.buffer(0.00001))
+                else:
+                    grism_patches[filt_i] = p.buffer(0.00001)
+                #
+                patch = PolygonPatch(p, alpha=0.1, fc=fc, ec=c_i,
+                                     label=None, zorder=zo)
+            
+                pat = ax.add_patch(patch)
+                
+            else:        
+                if filt_i not in filter_list:
+                    label = '{0:5} {1:>8.1f}'.format(filt_i, tab['exptime'][tab['filter'] == filt_i.upper()].sum()/1000)
+                else:
+                    label = '_'.join(f.split('_')[1:])
+            
+                patch = PolygonPatch(p, alpha=alpha, fc=fc, ec=c_i,
+                                     label=label, zorder=zo)
+            
+                pat = ax.add_patch(patch)
+                             
+                if filt_i not in filter_list:
+                    handles.append(pat)
+                    labels.append(label)
+                    filter_list.append(filt_i)
+    
+    if fill_grism:
+        for g in grism_patches:
+            fc = ec = grism_colors[g]
+            filt_i = g
+            
+            if filt_i not in ['g102', 'g141', 'g800l']:
+                fc = 'None'
+                alpha = 0.2
+            else:
+                alpha = 0.2
+                
+            label = '{0:5} {1:>8.1f}'.format(filt_i, tab['exptime'][tab['filter'] == g.upper()].sum()/1000)
+            
+            patch = PolygonPatch(grism_patches[g], alpha=alpha, fc=fc, ec=ec,
+                                 label=label, zorder=100)
+        
+            pat = ax.add_patch(patch)
+                         
+            if filt_i not in filter_list:
+                handles.append(pat)
+                labels.append(label)
+                filter_list.append(filt_i)
+            
+    ax.legend(handles, labels, fontsize=7, ncol=int(np.ceil(len(labels)/5)), loc='upper right')
+    
+    ax.grid()
+
+    cosd = np.cos(tab.meta['DEC']/180*np.pi)
+
+    xra += 1/60/cosd*np.array([-1,1])
+    yra += 1/60*np.array([-1,1])
+    ax.set_xlim(xra[::-1])
+    ax.set_ylim(yra)
+    
+    dy = yra[1] - yra[0]
+    dx = xra[1] - xra[0]
+    
+    ax.set_aspect(1./cosd)
+    
+    tab.meta['XMIN'] = xra[0]
+    tab.meta['XMAX'] = xra[1]
+    tab.meta['YMIN'] = yra[0]
+    tab.meta['YMAX'] = yra[1]
+    # Boxquery for HSC
+    tab.meta['boxquery'] = 'boxQuery(coord,{0:.5f},{1:.5f},{2:.5f},{3:.5f})'.format(xra[0], xra[1], yra[0], yra[1])
+
+    fig.set_size_inches(xsize, xsize*np.clip(dy/(dx*cosd), 0.2, 5))
+    
+    draw_axis_labels(ax=ax, nlabel=nlabel)
+    
+    ax.text(0.03, 0.03, time.ctime(), fontsize=5, transform=ax.transAxes, ha='left', va='bottom')
+    
+    fig.tight_layout(pad=0.2)
+    #fig.tight_layout(pad=0.2)
+    return fig
+    
+def draw_axis_labels(ax=None, nlabel=3, format='latex'):
+    """
+    Draw rounded axis labels in DMS format
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+    from descartes import PolygonPatch
+    
+    from astropy import units as u
+    from astropy.coordinates import angles
+    
+    if ax is None:
+        ax = plt.gca()
+    
+    dy = np.abs(np.diff(ax.get_ylim()))
+    dx = np.abs(np.diff(ax.get_xlim()))
+    
+    yopts = [30./60, 1,2,4,8,16,30,60, 120, 240]
+    yminor = [5./60, 10./60,1,2,2,4,10,15, 30, 60]
+    ymaj = np.maximum(1., np.round(dy*60/nlabel))
+    y_i = int(np.round(np.interp(ymaj, yopts, range(len(yopts)), left=0)))
+    ymaj = yopts[y_i]
+    yminor = yminor[y_i]
+    
+    xopts =  [2, 5, 10, 15,30,60,120, 240, 480]
+    xminor = [1, 1, 5, 5, 10, 15, 30, 60, 120]
+    xmaj = np.maximum(1, np.round(dx*24/360*3600/nlabel))
+    x_i = int(np.round(np.interp(xmaj, xopts, range(len(xopts)), left=0)))
+    xmaj = xopts[x_i]
+    xminor = xminor[x_i]
+    
+    ax.xaxis.set_major_locator(MultipleLocator(xmaj/3600*360/24))
+    ax.yaxis.set_major_locator(MultipleLocator(ymaj/60))
+
+    ax.xaxis.set_minor_locator(MultipleLocator(xminor/3600*360/24))
+    ax.yaxis.set_minor_locator(MultipleLocator(yminor/60))
+    
+    xcoo = [angles.Longitude(t*u.deg) for t in ax.get_xticks()]
+    ycoo = [angles.Latitude(t*u.deg) for t in ax.get_yticks()]
+    
+    ax.set_xticklabels([t.to_string(u.hourangle, pad=True, fields=2+((xmaj < 60)), precision=0, format=format) for i, t in enumerate(xcoo)])
+    ax.set_yticklabels([t.to_string(u.deg, pad=True, fields=2+(ymaj < 1), format=format) for t in ycoo])
+    
+def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
     """
     Associate visits by filter + position + PA + date
     """
@@ -695,6 +989,8 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
     indices = np.arange(len(tab))
     assoc_idx = np.zeros(len(tab), dtype=int)-1
     
+    visit_numbers = np.array([o[4:6] for o in tab['obs_id']])
+    
     assoc = []
     for i in range(len(tab)):
         if assoc_idx[i] >= 0:
@@ -702,7 +998,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
                 
         assoc_idx[i] = len(assoc)
         
-        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc), 't_min':tab['t_min'][i], 'instrument_name':tab['instrument_name'][i]}
+        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc), 't_min':tab['t_min'][i], 't_max':tab['t_max'][i], 'instrument_name':tab['instrument_name'][i], 'visit_number':visit_numbers[i]}
         
         for j in range(i+1, len(tab)):
             
@@ -711,16 +1007,17 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
                 
             f_j = tab['filter'][j]
             pr_j = tab['proposal_id'][j]
+            visit_j = visit_numbers[j]
             instr_j = tab['instrument_name'][j]
             dpa = assoc_i['ori'] - ori[j]
-            dt = assoc_i['t_min'] - tab['t_min'][j]
+            dt =  tab['t_min'][j] - assoc_i['t_max']
             p_j = Point(dx[j], dy[j]).buffer(max_sep)
             
             # Has match
             test = (np.abs(dpa) < max_pa) & (p_j.intersects(assoc_i['pos']))
-            
             test &= np.abs(dt) < max_time
-
+            test |= (visit_j == assoc_i['visit_number'])
+            
             if match_instrument:
                 test &= (instr_j == assoc_i['instrument_name'])
                 
@@ -737,6 +1034,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4, match_filt
                 assoc_idx[j] = assoc_idx[i]
                 assoc_i['pos'] = assoc_i['pos'].union(p_j)
                 assoc_i['indices'].append(j)
+                assoc_i['t_max'] = tab['t_max'][j]
         
         assoc.append(assoc_i)
     
