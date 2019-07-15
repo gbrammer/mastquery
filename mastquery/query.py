@@ -108,7 +108,7 @@ def _get_correct_exposure_times(tab, in_place=True):
             return np.zeros(len(tab))-1
         
         
-def get_products_table(query_tab, extensions=['RAW']):
+def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
     """
     Get a new table with the association products
     """
@@ -117,20 +117,31 @@ def get_products_table(query_tab, extensions=['RAW']):
     
     obsid=','.join(['{0}'.format(o) for o in query_tab['obsid']])
     
-    try:
-        from astroquery.mast import Observations
-        prod_tab = Observations.get_product_list(obsid)
-    except:
+    if use_astroquery:
+        try:
+            from astroquery.mast import Observations
+            prod_tab = Observations.get_product_list(obsid)
+        except:
+            request = {'service':'Mast.Caom.Products',
+               'params':{'obsid':obsid},
+               'format':'json',
+               'pagesize':10000,
+               'page':1}   
+        
+            headers, outString = utils.mastQuery(request)
+            outData = json.loads(outString)
+            prod_tab = utils.mastJson2Table(outData)
+    else:
         request = {'service':'Mast.Caom.Products',
            'params':{'obsid':obsid},
            'format':'json',
            'pagesize':10000,
            'page':1}   
-
+    
         headers, outString = utils.mastQuery(request)
         outData = json.loads(outString)
         prod_tab = utils.mastJson2Table(outData)
-    
+        
     prod_tab.rename_column('parent_obsid', 'obsid')
     prod_tab.remove_column('proposal_id')
     prod_tab.rename_column('obs_id', 'observation_id')
@@ -393,6 +404,9 @@ def parse_polygons(polystr):
     
         ra = Angle(poly_i[:,0]*u.deg).wrap_at(360*u.deg).value
         poly_i[:,0] = ra
+        if len(poly_i) < 2:
+            continue
+        
         poly.append(poly_i)
         
     return poly
