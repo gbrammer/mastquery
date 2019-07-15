@@ -65,8 +65,17 @@ def make_curl_script(table, level=None, script_name=None, inst_products=DEFAULT_
             dataset = table['observation_id'][i]
             for product in products:
                 if skip_existing:
-                    path = '{2}/{0}_{1}.fits*'.format(dataset.lower(), product.lower(), output_path)
-                    if len(glob.glob(path)) > 0:
+                    path = '{2}/{0}_{1}.fits*'
+                    
+                    path_files = glob.glob(path.format(dataset.lower(),
+                                           product.lower(), output_path))
+                    
+                    # Don't fetch RAW if FLT exists
+                    if products == ['RAW']:
+                        path_files += glob.glob(path.format(dataset.lower(),
+                                               'flt', output_path))
+                        
+                    if len(path_files) > 0:
                         skip = True
                     else:
                         skip = False
