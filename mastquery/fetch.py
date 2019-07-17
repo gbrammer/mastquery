@@ -162,7 +162,7 @@ def persistence_products(tab):
             else:
                 vst = '{0:02d}'.format(visit)
         
-            file_i = 'https://archive.stsci.edu/pub/wfc3_persist/{0}/Visit{1}/{0}.Visit{1}.tar.gz'.format(prog, vst)
+            file_i = 'https://archive.stsci.edu/pub/wfc3_persist/{0}/Visit{1}/{0}.Visit{1}.tar.gz'.format(prog, vst.upper())
             persist_files.append(file_i)
 
     return persist_files
