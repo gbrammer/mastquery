@@ -348,8 +348,11 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         # polygon
         pointing_overlaps = np.zeros(len(xtab), dtype=bool)
         for j in range(len(xtab)):
-            poly = query.parse_polygons(xtab['footprint'][j])#[0]
-
+            try:
+                poly = query.parse_polygons(xtab['footprint'][j])#[0]
+            except:
+                pointing_overlaps[j] = False
+                
             pshape = None
             for pi in poly:
                 try:
@@ -395,8 +398,11 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 ax.scatter(tab.meta['boxra'][0], tab.meta['boxdec'][0],
                            marker='*', color='r', zorder=1e4, alpha=0.8)
             
-        colors = query.show_footprints(xtab, ax=ax, alpha=tile_alpha)
-        
+        try:
+            colors = query.show_footprints(xtab, ax=ax, alpha=tile_alpha)
+        except:
+            continue
+            
         patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, alpha=patch_alpha, zorder=2)
         
         ax.plot(xy[0], xy[1], alpha=patch_alpha, color=BLUE)
@@ -667,7 +673,7 @@ def parse_overlap_table(tab):
 
 ASSOC_ARGS = {'max_pa':2, 'max_sep':0.5, 'max_time':1.e4/86400., 'match_filter':True, 'match_instrument':True, 'match_program':True, 'hack_grism_pa':True, 'parse_for_grisms':True}
 
-def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS, make_figure=True, xsize=6, nlabel=3, assoc_min=0, fill_grism=True):
+def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS, make_figure=True, xsize=6, nlabel=3, assoc_min=0, fill_grism=True, force_fill=False):
     """
     Split table by groups from `compute_associations`
     
@@ -729,12 +735,12 @@ def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS,
         polys[label] = poly_i
     
     if make_figure:
-        fig = make_association_figure(tab, polys, root=root, xsize=xsize, nlabel=nlabel, fill_grism=fill_grism)
+        fig = make_association_figure(tab, polys, root=root, xsize=xsize, nlabel=nlabel, fill_grism=fill_grism, force_fill=force_fill)
         return polys, fig
     else:
         return polys
     
-def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True):
+def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True, force_fill=False):
     """Make a figure to show associations
     
     """
@@ -812,7 +818,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                 has_grism = True    
             else:
                 c_i = colors[hash(filt_i) % len(colors)]
-                has_grism = False
+                has_grism = force_fill
                 grism_colors[filt_i] = c_i
                 has_grism = True
             
@@ -828,7 +834,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
             
             alpha = 0.4
             
-            if fill_grism & has_grism:                
+            if (fill_grism & has_grism) | (force_fill):                
                 #fc = c_i
                 #zo = -100000
                 #alpha = 0.25
@@ -858,15 +864,15 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                     labels.append(label)
                     filter_list.append(filt_i)
     
-    if fill_grism:
+    if fill_grism | force_fill:
         for g in grism_patches:
             fc = ec = grism_colors[g]
             filt_i = g
             
-            if filt_i not in ['g102', 'g141', 'g800l']:
-                fc = 'None'
+            if (filt_i in ['g102', 'g141', 'g800l']) | force_fill:
                 alpha = 0.2
             else:
+                fc = 'None'
                 alpha = 0.2
                 
             label = '{0:5} {1:>8.1f}'.format(filt_i, tab['exptime'][tab['filter'] == g.upper()].sum()/1000)
