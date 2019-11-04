@@ -105,7 +105,7 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     #np.save('overlaps.npy', [match_poly, match_ids])
     return match_poly, match_ids
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False, min_radius=2):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -297,8 +297,9 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         xy = np.array(p.convex_hull.boundary.xy)
         xradius = np.abs(xy[0]-ra).max()*np.cos(dec/180*np.pi)*60
         yradius = np.abs(xy[1]-dec).max()*60
-
-        box = [ra, dec, np.maximum(xradius*1.5, yradius*1.5)]
+        
+        box_radius = np.max([xradius*1.5, yradius*1.5, min_radius])
+        box = [ra, dec, box_radius]
         
         # Build target name from RA/Dec
         jname = utils.radec_to_targname(box[0], box[1], round_arcsec=(4, 60), targstr=targstr)
@@ -343,6 +344,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         xtab.meta['FOLAP'] = (fractional_overlap, 'Fractional overlap parameter')
         xtab.meta['MIN_AREA'] = (min_area, 'Minimum overlap fraction')
         xtab.meta['BUFFER'] = (buffer_arcmin, 'Buffer for overlaps in arcmin')
+        xtab.meta['SREGION'] = (utils.polygon_to_sregion(p), 'Parent footprint')
         
         # Only include ancillary data that directly overlaps with the primary
         # polygon

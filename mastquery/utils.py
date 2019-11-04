@@ -230,6 +230,27 @@ def set_warnings(numpy_level='ignore', astropy_level='ignore'):
     np.seterr(all=numpy_level)
     warnings.simplefilter(astropy_level, category=AstropyWarning)
 
+def polygon_to_sregion(poly):
+    """
+    Convert `shapely.Polygon` vertices to an SREGION string
+    """
+    try:
+        xy = np.array(poly.boundary.xy).T.flatten()
+    except:
+        xy = np.array(poly.convex_hull.boundary.xy).T.flatten()
+    
+    pstr = 'POLYGON({0})'.format(','.join(['{0:.6f}'.format(c) for c in xy]))
+    return pstr
+
+def sregion_to_polygon(pstr):
+    """
+    Convert `shapely.Polygon` vertices to an SREGION string
+    """
+    from shapely.geometry import Polygon
+    coo = np.cast[float](pstr.lower().strip('polygon(').strip(')').split(','))
+    poly = Polygon(coo.reshape(-1,2))
+    return poly
+    
 def radec_to_targname(ra=0, dec=0, round_arcsec=(4, 60), precision=2, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', header=None):
     """Turn decimal degree coordinates into a string with rounding.
     
