@@ -1073,5 +1073,203 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
         sel = tab['assoc_idx'] == assoc
         tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
         
+def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlabel=3, min_size=4):
+    """
+    Query the Spitzer archive around an HST pointing table
+    """
+    import time
+    import urllib
+    from astropy.table import Table
+    from shapely.geometry import Polygon
+    from descartes import PolygonPatch
+    
+    IPAC_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/servlet/DataService?RA={ra}&DEC={dec}&SIZE={size}&VERB=3&DATASET=ivo%3A%2F%2Firsa.ipac%2Fspitzer.level{level}"
+    
+    if False:
+        tab = utils.read_catalog('j021744m0346_footprint.fits')
+        tab = utils.read_catalog('j224324m0936_footprint.fits')
+        root='j012016p2134'
+        tab = utils.read_catalog('{0}_footprint.fits'.format(root))
+    
+    if isinstance(tab, str):
+        tab = utils.read_catalog('{0}_footprint.fits'.format(tab))
+            
+    meta = tab.meta
+    xr = (meta['XMIN'], meta['XMAX'])
+    yr = (meta['YMIN'], meta['YMAX'])
+    ra, dec = meta['BOXRA'], meta['BOXDEC']
+    
+    cosd = np.cos(dec/180*np.pi)
+    dx = (xr[1]-xr[0])*cosd*60
+    dy = (yr[1]-yr[0])*60
+    
+    box_width = np.maximum(dx, dy)
+    
+    query_url = IPAC_URL.format(ra=ra, dec=dec, 
+                            size=np.maximum(min_size, box_width/2)/60.,
+                            level=level)
+    
+    f = urllib.request.urlopen(query_url)
+    data = f.read().decode('utf-8')
+    f.close()
+    
+    mode_data = {}
+    modes = ['IRAC 3.6um', 'IRAC 4.5um', 'IRAC 5.8um', 'IRAC 8.0um', 
+             'MIPS 24um', 'MIPS 70um', 'MIPS 160um']
+    
+    try:
+        ipac = Table.read(data, format='ascii.ipac')
+    
+        for mode in modes:
+            m = ipac['wavelength'] == mode
+            mode_i = {}
+            mode_i['exptime'] = ipac['exposuretime'][m].sum()
+            mode_i['N'] = m.sum()
+            mstr = mode.replace(' ','').replace('.','')[:-2]
+            mode_i['short'] = mstr
+            mode_data[mode] = mode_i
+
+            ipac.meta['T{0}'.format(mstr)] = int(mode_i['exptime']), 'Exposure time in {0}, seconds'.format(mode)
+            ipac.meta['N{0}'.format(mstr)] = mode_i['N'], 'Number of BCD files for {0}'.format(mode)
+    
+    except:
+        ipac = Table()
+        ipac['x'] = [0]
+        
+        for mode in modes:
+            mode_i = {}
+            mode_i['exptime'] = 0.
+            mode_i['N'] = 0
+            mstr = mode.replace(' ','').replace('.','')[:-2]
+            mode_i['short'] = mstr
+            mode_data[mode] = mode_i
+
+            ipac.meta['T_{0}'.format(mstr)] = int(mode_i['exptime']), 'Exposure time in {0}, seconds'.format(mode)
+            ipac.meta['N_{0}'.format(mstr)] = mode_i['N'], 'Number of BCD files for {0}'.format(mode)
+                    
+    ipac.meta['URL'] = query_url
+    ipac.meta['TQUERY'] = (time.ctime(), 'Timestamp of query execution')
+    ipac.write('{0}_ipac.fits'.format(meta['NAME']), overwrite=True)
+    
+    if 'x' in ipac.colnames:
+        return ipac, None
+        
+    if make_figure:
+        colors = list(plt.cm.get_cmap(cmap)(np.linspace(0, 0.35, 4)))
+        colors += list(plt.cm.get_cmap(cmap)(np.linspace(0.6, 1, 3))[::-1])
+
+        #modes = np.unique(ipac['wavelength'])
+        fp = np.array([ipac['ra1'], ipac['dec1'], ipac['ra2'], ipac['dec2'], 
+                       ipac['ra3'], ipac['dec3'], ipac['ra4'], ipac['dec4']])
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        #ax.set_xlim(xr)
+        #ax.set_ylim(yr)
+
+        # Grow by factor of 2
+        #expand = 2
+        
+        expand = np.maximum(min_size*2/np.minimum(dx, dy), 1)
+        
+        ax.set_xlim(ra+dx/60/2*expand/cosd, ra-dx/60/2*expand/cosd)
+        ax.set_ylim(dec-dy/60/2*expand, dec+dy/60/2*expand)
+        
+        ax.scatter(ra, dec, marker='+', color='k')
+        
+        # HST patch
+        p0 = np.array([[xr[0], yr[0]],
+                       [xr[0], yr[1]],
+                       [xr[1], yr[1]],
+                       [xr[1], yr[0]]])
+
+        p_hst = None
+        for fph in tab['footprint']:
+            for p in query.parse_polygons(fph):
+                p_j = Polygon(p).buffer(0.001)
+                if p_hst is None:
+                    p_hst = p_j
+                else:
+                    p_hst = p_hst.union(p_j)
+        
+        ipac['with_hst'] = False
+        
+        for i, mode in enumerate(modes):
+            m = ipac['wavelength'] == mode
+            mode_i = mode_data[mode]
+            if m.sum() == 0:
+                mode_i['fp'] = None
+                continue
+                
+            fps = fp[:,m]
+            fp_i = Polygon(fps[:,0].reshape((-1,2))).buffer(0.1/3600.)
+            with_hst = np.zeros(m.sum(), dtype=bool)
+            for j, f in enumerate(fps.T):
+                fp_j = Polygon(f.reshape((-1,2))).buffer(0.1/3600.)
+                with_hst[j] = p_hst.intersection(fp_j).area > 0
+                if with_hst[j]:
+                    ax.add_patch(PolygonPatch(fp_j, ec=colors[i], fc='None', 
+                                          alpha=0.05))
+                    
+                fp_i = fp_i.union(fp_j)
+             
+            mode_i['fp'] = fp_i
+            ipac['with_hst'][m] |= with_hst
+            
+            label = '{0} - {1:3.1f}/{2:3.1f} hr'.format(mode_i['short'], mode_i['exptime']/3600., ipac['exposuretime'][m][with_hst].sum()/3600.)
+            
+            if mode_i['short'] in ['IRAC36', 'IRAC45']:
+                ax.add_patch(PolygonPatch(fp_i, ec=colors[i], fc=colors[i], 
+                                      alpha=0.2, label=label))
+            else:
+                ax.add_patch(PolygonPatch(fp_i, ec=colors[i], fc='None', 
+                                      alpha=0.8, label=label, 
+                                      linestyle='--'))
+                
+        ax.add_patch(PolygonPatch(p_hst, ec='k', fc='None', 
+                              alpha=0.8, label='HST'))
+               
+        ax.grid()
+        ax.set_title(meta['NAME'])
+        #ax.set_xlim(ax.get_xlim()[::-1])
+        
+        ax.set_aspect(1/cosd)
+        ax.legend(ncol=2, fontsize=6, loc='upper right')
+        fig.set_size_inches(xsize, xsize*np.clip(dy/dx, 0.2, 5))
+        
+        if nlabel > 0:
+            draw_axis_labels(ax=ax, nlabel=nlabel)
+        
+        ax.text(0.03, 0.03, time.ctime(), fontsize=5, transform=ax.transAxes, ha='left', va='bottom')
+
+        fig.tight_layout(pad=0.2)
+        fig.savefig('{0}_ipac.png'.format(meta['NAME']))
+        ipac.write('{0}_ipac.fits'.format(meta['NAME']), overwrite=True)
+    
+    return ipac, fig
+
+def make_all():
+    """
+    Make all IRAC queries
+    """
+    import glob
+    files = glob.glob('*footprint.fits')
+    files.sort()
+    plt.ioff()
+    failed = []
+    for file in files:
+        print(file)
+        if os.path.exists(file.replace('_footprint', '_ipac')):
+            continue
+        
+        tab = utils.read_catalog(file)
+        if tab.meta['NASSOC'] < 100:
+            try:
+                ipac, fig = spitzer_query(tab, min_size=10)
+                plt.close('all')
+            except:
+                failed.append(file)
+    
+    plt.ion()
     
     
