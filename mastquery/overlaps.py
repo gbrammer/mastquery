@@ -1080,6 +1080,8 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
     import time
     import urllib
     from astropy.table import Table
+    from astropy.time import Time
+    
     from shapely.geometry import Polygon
     from descartes import PolygonPatch
     
@@ -1119,7 +1121,12 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
     
     try:
         ipac = Table.read(data, format='ascii.ipac')
-    
+        
+        if level == 2:
+            #ipac['exptime'] = ipac['endtime'] - ipac['begintime']
+            dt = Time(ipac['endtime']) - Time(ipac['begintime']) 
+            ipac['exposuretime'] = dt.sec
+             
         for mode in modes:
             m = ipac['wavelength'] == mode
             mode_i = {}
@@ -1149,6 +1156,8 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
                     
     ipac.meta['URL'] = query_url
     ipac.meta['TQUERY'] = (time.ctime(), 'Timestamp of query execution')
+    ipac.meta['LEVEL'] = (level, 'IPAC calibration level')
+    
     ipac.write('{0}_ipac.fits'.format(meta['NAME']), overwrite=True)
     
     if 'x' in ipac.colnames:
@@ -1230,7 +1239,8 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
                               alpha=0.8, label='HST'))
                
         ax.grid()
-        ax.set_title(meta['NAME'])
+        ax.set_title('{0} - Level{1}'.format(meta['NAME'], level))
+        
         #ax.set_xlim(ax.get_xlim()[::-1])
         
         ax.set_aspect(1/cosd)
@@ -1258,14 +1268,20 @@ def make_all():
     plt.ioff()
     failed = []
     for file in files:
-        print(file)
         if os.path.exists(file.replace('_footprint', '_ipac')):
+            print('skip {0}'.format(file))
             continue
+
+        else:
+            print(file)
         
         tab = utils.read_catalog(file)
         if tab.meta['NASSOC'] < 100:
             try:
-                ipac, fig = spitzer_query(tab, min_size=10)
+                ipac, fig = spitzer_query(tab, min_size=10, level=2)
+                if len(ipac) < 50:
+                    ipac, fig = spitzer_query(tab, min_size=10, level=1)
+                    
                 plt.close('all')
             except:
                 failed.append(file)
