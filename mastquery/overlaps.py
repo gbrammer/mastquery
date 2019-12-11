@@ -1072,21 +1072,32 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
         assoc = 48
         sel = tab['assoc_idx'] == assoc
         tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
+
+#### URLs for IPAC / Spitzer queries
+
+# API table output
+IPAC_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/servlet/DataService?RA={ra}&DEC={dec}&SIZE={size}&VERB=3&DATASET=ivo%3A%2F%2Firsa.ipac%2Fspitzer.level{level}"
+
+IPAC_AOR_URL = "https://irsa.ipac.caltech.edu/applications/Spitzer/SHA/servlet/DataService?REQKEY={aor}&VERB=3&DATASET=ivo%3A%2F%2Firsa.ipac%2Fspitzer.level{level}"
+
+# SHA web query
+SHA_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/#id=SearchByPosition&RequestClass=ServerRequest&DoSearch=true&SearchByPosition.field.radius={size}&SearchByPosition.field.matchByAOR=false&UserTargetWorldPt={ra};{dec};EQ_J2000&SimpleTargetPanel.field.resolvedBy=nedthensimbad&MoreOptions.field.prodtype=aor,pbcd,bcd,supermosaic,inventory&InstrumentPanel.field.irac=_all_&InstrumentPanel.field.mips=_all_&InstrumentPanel.field.irs=_none_&InstrumentPanel.field.panel=instrument&InventorySearch.radius={size}&shortDesc=Position&isBookmarkAble=true&isDrillDownRoot=true&isSearchResult=true"
         
-def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlabel=3, min_size=4):
+def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlabel=3, min_size=4, maxwavelength=20):
     """
     Query the Spitzer archive around an HST pointing table
     """
     import time
     import urllib
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
     from astropy.table import Table
     from astropy.time import Time
     
     from shapely.geometry import Polygon
     from descartes import PolygonPatch
-    
-    IPAC_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/servlet/DataService?RA={ra}&DEC={dec}&SIZE={size}&VERB=3&DATASET=ivo%3A%2F%2Firsa.ipac%2Fspitzer.level{level}"
-    
+            
     if False:
         tab = utils.read_catalog('j021744m0346_footprint.fits')
         tab = utils.read_catalog('j224324m0936_footprint.fits')
@@ -1106,14 +1117,41 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
     dy = (yr[1]-yr[0])*60
     
     box_width = np.maximum(dx, dy)
+    query_size = np.maximum(min_size, box_width/2)/60.
     
-    query_url = IPAC_URL.format(ra=ra, dec=dec, 
-                            size=np.maximum(min_size, box_width/2)/60.,
-                            level=level)
+    if level == -1:
+        # First query Level 2 and then get by AOR
+        query_url = IPAC_URL.format(ra=ra, dec=dec, size=query_size, level=2)
+        
+        f = urllib.request.urlopen(query_url)
+        data = f.read().decode('utf-8')
+        f.close()
+        
+        lev2 = Table.read(data, format='ascii.ipac')
+        skip = np.array([l.startswith('IRS') for l in lev2['modedisplayname']])
+        
+        # only up to 24um
+        skip |= lev2['minwavelength'] > maxwavelength
+        
+        aors = np.unique(lev2['reqkey'][~skip])
+        print('      level=-1, query by N={0} AORs'.format(len(aors)))
+        
+        aor_string = ','.join(['{0}'.format(aor) for aor in aors])
+        
+        query_url = IPAC_AOR_URL.format(aor=aor_string, level=1)
+        
+        f = urllib.request.urlopen(query_url)
+        data = f.read().decode('utf-8')
+        f.close()
+        
+        level = 1
+        
+    else:
+        query_url = IPAC_URL.format(ra=ra, dec=dec, size=query_size, level=level)
     
-    f = urllib.request.urlopen(query_url)
-    data = f.read().decode('utf-8')
-    f.close()
+        f = urllib.request.urlopen(query_url)
+        data = f.read().decode('utf-8')
+        f.close()
     
     mode_data = {}
     modes = ['IRAC 3.6um', 'IRAC 4.5um', 'IRAC 5.8um', 'IRAC 8.0um', 
@@ -1157,6 +1195,9 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
     ipac.meta['URL'] = query_url
     ipac.meta['TQUERY'] = (time.ctime(), 'Timestamp of query execution')
     ipac.meta['LEVEL'] = (level, 'IPAC calibration level')
+    ipac.meta['RA'] = (ra, 'Query center, RA')
+    ipac.meta['DEC'] = (dec, 'Query center, Dec')
+    ipac.meta['R'] = (query_size, 'Query radius, deg')
     
     ipac.write('{0}_ipac.fits'.format(meta['NAME']), overwrite=True)
     
@@ -1212,11 +1253,13 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
                 
             fps = fp[:,m]
             fp_i = Polygon(fps[:,0].reshape((-1,2))).buffer(0.1/3600.)
+            fp_i_hst = Polygon(fps[:,0].reshape((-1,2))).buffer(0.1/3600.)
             with_hst = np.zeros(m.sum(), dtype=bool)
             for j, f in enumerate(fps.T):
                 fp_j = Polygon(f.reshape((-1,2))).buffer(0.1/3600.)
                 with_hst[j] = p_hst.intersection(fp_j).area > 0
                 if with_hst[j]:
+                    fp_i_hst = fp_i_hst.union(fp_j)
                     ax.add_patch(PolygonPatch(fp_j, ec=colors[i], fc='None', 
                                           alpha=0.05))
                     
@@ -1228,8 +1271,13 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
             label = '{0} - {1:3.1f}/{2:3.1f} hr'.format(mode_i['short'], mode_i['exptime']/3600., ipac['exposuretime'][m][with_hst].sum()/3600.)
             
             if mode_i['short'] in ['IRAC36', 'IRAC45']:
+                ax.add_patch(PolygonPatch(fp_i_hst, ec=colors[i],
+                                          fc=colors[i], 
+                                          alpha=0.2, label=label))
+                
                 ax.add_patch(PolygonPatch(fp_i, ec=colors[i], fc=colors[i], 
-                                      alpha=0.2, label=label))
+                                      alpha=0.05, label=label))
+                
             else:
                 ax.add_patch(PolygonPatch(fp_i, ec=colors[i], fc='None', 
                                       alpha=0.8, label=label, 
@@ -1276,7 +1324,16 @@ def make_all():
             print(file)
         
         tab = utils.read_catalog(file)
-        if tab.meta['NASSOC'] < 100:
+        if 'NASSOC' in tab.meta:
+            test = tab.meta['NASSOC'] < 100
+        else:
+            test = True
+        
+        if 'XMIN' not in tab.meta:
+            print('Split {0}'.format(file))
+            _res = overlaps.split_associations(tab)
+                
+        if test:
             try:
                 ipac, fig = spitzer_query(tab, min_size=10, level=2)
                 if len(ipac) < 50:
@@ -1288,4 +1345,28 @@ def make_all():
     
     plt.ion()
     
+    if False:
+        import numpy as np
+        import matplotlib.pyplot as plt                                                                                                         
+        from mastquery.overlaps import spitzer_query
+        from grizli import utils
+        
+        fields = np.loadtxt('fields.list', dtype=str)
+        
+        #for field in fields:
+        
+        files = glob.glob('*footprint.fits')
+        files.sort()
+        for file in files:
+            if os.path.exists(file.replace('footprint','ipac')):
+                continue
+            
+            field = file.split("_footprint")[0]
+            tab = utils.read_catalog(f'{field}_footprint.fits')
+            print(field, tab.meta['BOXRAD'])
+            if tab.meta['BOXRAD'] > 11:
+                continue
+                
+            ipac, fig = spitzer_query(tab, min_size=10, level=-1)
+            plt.close('all')
     
