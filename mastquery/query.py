@@ -2,9 +2,12 @@
 Demo of querying the ESA HST archive
 """
 
+import inspect
 import json
 
 import numpy as np
+
+from . import utils
 
 MASTER_COLORS = {'G102':'#1f77b4',
 'F125W':'#ff7f0e',
@@ -169,6 +172,10 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     All columns listed at https://mast.stsci.edu/api/v0/_c_a_o_mfields.html 
     can be used for the query.
     """                  
+    # arguments
+    frame = inspect.currentframe()
+    msg = utils.log_function_arguments(None, frame, 'query.run_query')
+    
     import time
     
     from astroquery.mast import Observations
@@ -176,7 +183,7 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
     from astropy.io.misc import yaml
     
     import astropy.units as u
-           
+    
     query_args = {}
     for k in base_query:
         query_args[k] = base_query[k]
@@ -202,7 +209,10 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
         query_args['coordinates'] = coo
         query_args['radius'] = radius*u.arcmin
         
-    tab = Observations.query_criteria(**query_args)                               
+    try:
+        tab = Observations.query_criteria(**query_args)                               
+    except:
+        return query_args
     
     tab.meta['qtime'] = time.ctime(), 'Query timestamp'
     
@@ -410,6 +420,69 @@ def parse_polygons(polystr):
         poly.append(poly_i)
         
     return poly
+
+def instrument_polygon(tab_row, bad_area=0.3):
+    """
+    Fix for bad footprints in MAST tables, perhaps from bad a posteriori 
+    alignment
+    """
+    from shapely.geometry import Polygon, Point
+
+    pt = Point(tab_row['ra'], tab_row['dec'])
+    pt_buff = pt.buffer(16./60)
+    
+    # Expected area, neglects subarrays
+    if tab_row['instrument_name'] in utils.INSTRUMENT_AREAS:
+        area = utils.INSTRUMENT_AREAS[tab_row['instrument_name']]
+    else:
+        area = 8.
+    
+    try:
+        poly = parse_polygons(tab_row['footprint'])#[0]
+    except:
+        pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+        IS_BAD = True
+        keep_poly = [np.array(pshape.boundary.xy).T]
+        return pshape, IS_BAD, keep_poly
+        
+    pshape = None
+    keep_poly = []
+    for pi in poly:
+        try:
+            psh = Polygon(pi)
+        except:
+            continue
+        
+        if psh.intersection(pt_buff).area < 0.01/3600:
+            continue
+        else:
+            keep_poly.append(pi)
+                
+        if pshape is None:
+            pshape = psh
+        else:
+            pshape = pshape.union(psh)
+        
+    msg = f"    Footprint problem: {tab_row['obs_id']}, area={area:4.1f}, {tab_row['instrument_name']:>10}, npoly={len(poly)}"
+    
+    # Got to the end and pshape is None, probably because doesn't 
+    # overlap with the target position 
+    # (a posteriori alignment problems?)
+    IS_BAD = False
+    if pshape is None:
+        print(msg)
+        pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+        IS_BAD = True
+    else:
+        if pshape.area < bad_area*area/3600:
+            print(msg)
+            pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+            IS_BAD = True
+    
+    if IS_BAD:
+        keep_poly = [np.array(pshape.boundary.xy).T]
+                                    
+    return pshape, IS_BAD, keep_poly
     
 def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):
     """
@@ -536,15 +609,19 @@ def show_footprints(tab, ax=None, alpha=0.1):
             colors[f] = mpl_colors[i % len(mpl_colors)]
         
     for i in range(len(tab)):
-        poly = parse_polygons(tab['footprint'][i])#[0]
-
+        #poly = parse_polygons(tab['footprint'][i])#[0]
+        pshape, is_bad, poly = instrument_polygon(tab[i])
+            
         for p in poly:
             pclose = np.vstack([p, p[0,:]]) # repeat the first vertex to close
-            
-            ax.plot(pclose[:,0], pclose[:,1], alpha=alpha, color=colors[tab['filter'][i]])
-            
+
+            ax.plot(pclose[:,0], pclose[:,1], alpha=alpha,
+                    color=colors[tab['filter'][i]])
+        
             # Plot a point at the first vertex, pixel x=y=0.
-            ax.scatter(pclose[0,0], pclose[0,1], marker='.', color=colors[tab['filter'][i]], alpha=alpha)
+            if not is_bad:
+                ax.scatter(pclose[0,0], pclose[0,1], marker='.',
+                       color=colors[tab['filter'][i]], alpha=alpha)
     
     return colors
     

@@ -3,6 +3,8 @@ Scripts to find overlapping HST data
 """
 
 import time
+import traceback
+import inspect
 from . import query, utils
   
 def test():
@@ -165,7 +167,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
 
     from astropy.table import Table
 
-    from shapely.geometry import Polygon
+    from shapely.geometry import Polygon, Point
     from descartes import PolygonPatch
         
     import time
@@ -183,19 +185,51 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     else:
         poly_query = False
         for i in range(len(tab)):
-            poly = query.parse_polygons(tab['footprint'][i])#[0]
-            pshape = None
-            for pi in poly:
-                try:
-                    psh = Polygon(pi)
-                except:
-                    continue
-                    
-                if pshape is None:
-                    pshape = psh
-                else:
-                    pshape = pshape.union(psh)
-        
+            
+            pshape, is_bad, poly = query.instrument_polygon(tab[i])
+            
+            # poly = query.parse_polygons(tab['footprint'][i])#[0]
+            # pt = Point(tab['ra'][i], tab['dec'][i])
+            # pt_buff = pt.buffer(20./60)
+            # 
+            # pshape = None
+            # for pi in poly:
+            #     try:
+            #         psh = Polygon(pi)
+            #     except:
+            #         continue
+            #     
+            #     if psh.intersection(pt_buff).area == 0:
+            #         continue
+            #            
+            #     if pshape is None:
+            #         pshape = psh
+            #     else:
+            #         pshape = pshape.union(psh)
+            #     
+            #     # Some guide star problems
+            #     if pshape.area*3600 > 20:
+            #         continue
+            # 
+            # # Expected area, neglects subarrays
+            # if tab[i]['instrument_name'] in utils.INSTRUMENT_AREAS:
+            #     area = utils.INSTRUMENT_AREAS[tab[i]['instrument_name']]
+            # else:
+            #     area = 8.
+            # 
+            # msg = f"Footprint problem: i={i} {tab[i]['obs_id']}, area={area:4.1f}, {tab[i]['instrument_name']:>10}, npoly={len(poly)}, expstart={tab[i]['expstart']}"
+            # 
+            # # Got to the end and pshape is None, probably because doesn't 
+            # # overlap with the target position 
+            # # (a posteriori alignment problems?)
+            # if pshape is None:
+            #     print(msg)
+            #     pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+            # else:
+            #     if pshape.area < 0.1*area/3600:
+            #         print(msg)
+            #         pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+                
             polygons.append(pshape.buffer(poly_buffer))
     
     # match_poly = [polygons[0]]
@@ -300,7 +334,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         
         box_radius = np.max([xradius*1.5, yradius*1.5, min_radius])
         box = [ra, dec, box_radius]
-        
+                
         # Build target name from RA/Dec
         jname = utils.radec_to_targname(box[0], box[1], round_arcsec=(4, 60), targstr=targstr)
         jname = jstr.format(prefix=prefix, jname=jname, suffix=suffix) #prefix+jname+suffix
@@ -314,10 +348,12 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         if use_parent:
             xtab = tab
         else:
-            try:
-                xtab = query.run_query(box=box, proposal_id=proposal_id, instruments=instruments, filters=filters, base_query=base_query, **extra)
-            except:
-                print('Failed!')
+            xtab = query.run_query(box=box, proposal_id=proposal_id, instruments=instruments, filters=filters, base_query=base_query, **extra)
+            if isinstance(xtab, dict):
+                utils.log_comment(jname+'.failed', xtab, verbose=False, 
+                                  show_date=True, mode='a')
+                utils.log_exception(jname+'.failed', traceback, 
+                                    verbose=True, mode='a')
                 continue
                 
             if not include_subarrays:
@@ -349,23 +385,48 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         # Only include ancillary data that directly overlaps with the primary
         # polygon
         pointing_overlaps = np.zeros(len(xtab), dtype=bool)
-        for j in range(len(xtab)):
-            try:
-                poly = query.parse_polygons(xtab['footprint'][j])#[0]
-            except:
-                pointing_overlaps[j] = False
-                
-            pshape = None
-            for pi in poly:
-                try:
-                    psh = Polygon(pi)
-                except:
-                    continue
-                    
-                if pshape is None:
-                    pshape = psh
-                else:
-                    pshape = pshape.union(psh)
+        for j in range(len(xtab)):            
+            pshape, is_bad, poly = query.instrument_polygon(xtab[j])
+
+            # try:
+            #     poly = query.parse_polygons(xtab['footprint'][j])#[0]
+            # except:
+            #     pointing_overlaps[j] = False
+            #     continue
+            
+            # pshape = None
+            # for pi in poly:
+            #     try:
+            #         psh = Polygon(pi)
+            #     except:
+            #         continue
+            #     
+            #     if psh.intersection(pt_buff).area == 0:
+            #         continue
+            #         
+            #     if pshape is None:
+            #         pshape = psh
+            #     else:
+            #         pshape = pshape.union(psh)
+            # 
+            # # Expected area, neglects subarrays
+            # if xtab[j]['instrument_name'] in utils.INSTRUMENT_AREAS:
+            #     area = utils.INSTRUMENT_AREAS[xtab[j]['instrument_name']]
+            # else:
+            #     area = 8.
+            # 
+            # msg = f"Footprint problem: i={j} {xtab[j]['obs_id']}, area={area:4.1f}, {xtab[j]['instrument_name']:>10}, npoly={len(poly)}, expstart={xtab[j]['expstart']}"
+            # 
+            # # Got to the end and pshape is None, probably because doesn't 
+            # # overlap with the target position 
+            # # (a posteriori alignment problems?)
+            # if pshape is None:
+            #     print(msg)
+            #     pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+            # else:
+            #     if pshape.area < 0.1*area/3600:
+            #         print(msg)
+            #         pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
                                     
             try:
                 isect = p.intersection(pshape.buffer(0.0001))
@@ -392,7 +453,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 ax.add_patch(PolygonPatch(p, alpha=parent_alpha))
             else:
                 colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha)
-        
+                
         ax.scatter(box[0], box[1], marker='+', color='k', zorder=1e4, alpha=0.8)
         
         if not poly_query:
@@ -715,24 +776,43 @@ def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS,
         label = label.format(root, prog, targ, inst, filt, ix)
         
         poly_i = None
-        for fp in tab['footprint'][sel]:
-            for p in query.parse_polygons(fp):
-                p_j = Polygon(p).buffer(0.001)
-                if tab_poly is None:
-                    tab_poly = p_j.buffer(0.001)
+        
+        for j in range(sel.sum()):
+            p_j, is_bad, poly = query.instrument_polygon(tab[sel][j])
+            if tab_poly is None:
+                tab_poly = p_j.buffer(0.001)
+            
+            if not tab_poly.buffer(2).intersects(p_j.buffer(2)):
+                print('Skip')
+                continue
                 
-                if not tab_poly.buffer(2).intersects(p_j.buffer(2)):
-                    print('Skip')
+            if poly_i is None:
+                poly_i = p_j
+            else:
+                if not poly_i.buffer(2).intersects(p_j.buffer(2)):
+                    print('x Skip')
                     continue
-                    
-                if poly_i is None:
-                    poly_i = Polygon(p)
-                else:
-                    if not poly_i.buffer(2).intersects(p_j.buffer(2)):
-                        print('x Skip')
-                        continue
 
-                    poly_i = poly_i.union(p_j)
+                poly_i = poly_i.union(p_j)
+        
+        # for fp in tab['footprint'][sel]:
+        #     for p in query.parse_polygons(fp):
+        #         p_j = Polygon(p).buffer(0.001)
+        #         if tab_poly is None:
+        #             tab_poly = p_j.buffer(0.001)
+        #         
+        #         if not tab_poly.buffer(2).intersects(p_j.buffer(2)):
+        #             print('Skip')
+        #             continue
+        #             
+        #         if poly_i is None:
+        #             poly_i = Polygon(p)
+        #         else:
+        #             if not poly_i.buffer(2).intersects(p_j.buffer(2)):
+        #                 print('x Skip')
+        #                 continue
+        # 
+        #             poly_i = poly_i.union(p_j)
                         
         polys[label] = poly_i
     
@@ -787,7 +867,14 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
         p_i = polys[f]
         xfilt_i = f.split('_')[-1]
         filt_i = xfilt_i.split('-')[-1]
-        
+        if 'clear' in filt_i.lower():
+            spl = filt_i.split(';')
+            if len(spl) > 1:
+                for s in spl:
+                    if 'clear' not in s:
+                        filt_i = s
+                        break
+                        
         if hasattr(p_i, '__len__'):
             all_p = [p for p in p_i]
         else:

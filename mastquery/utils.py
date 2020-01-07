@@ -2,12 +2,19 @@
 Utilities
 """
 import os
+import inspect
 import json
 
 import warnings
 import numpy as np
 
 from astropy.table import Table
+
+INSTRUMENT_AREAS = {'WFC3/IR':2.2,
+                    'WFPC2/WFC':8.,
+                    'WFPC2/PC':8.,
+                    'ACS/WFC':11.3,
+                    'WFC3/UVIS':7.3}
 
 # character to skip clearing line on STDOUT printing
 NO_NEWLINE = '\x1b[1A\x1b[1M'
@@ -230,6 +237,102 @@ def set_warnings(numpy_level='ignore', astropy_level='ignore'):
     np.seterr(all=numpy_level)
     warnings.simplefilter(astropy_level, category=AstropyWarning)
 
+#########
+# Logging
+#########
+def log_function_arguments(LOGFILE, frame, func='func', verbose=True):
+    """
+    Log local variables, e.g., parameter arguements to a file
+    
+    Parameters
+    ----------
+    LOGFILE : str or None
+        Output file.  If `None`, then force `verbose=True`.
+    
+    frame : `~inspect.currentframe()`
+        Namespace object.
+    
+    func : str
+        Function name to use
+        
+    verbose : bool
+        Print messaage to stdout.
+    
+    """
+    args = inspect.getargvalues(frame).locals
+    args.pop('frame')
+    for k in list(args.keys()): 
+        if hasattr(args[k], '__builtins__'):
+            args.pop(k)
+    
+    if func is not None:
+        logstr = '\n{0}(**{1})\n'
+    else:
+        logstr = '\n{1}'
+        
+    logstr = logstr.format(func, args)
+    msg = log_comment(LOGFILE, logstr, verbose=verbose, show_date=True)
+    return msg
+    
+def log_comment(LOGFILE, comment, verbose=False, show_date=False, mode='a'):
+    """
+    Log a message to a file, optionally including a date tag
+    """
+    import time
+        
+    if show_date:
+        msg = '\n# ({0})\n'.format(time.ctime())
+    else:
+        msg = ''
+        #fp.write('\n# ({0})\n'.format(time.ctime()))
+    
+    msg += '{0}\n'.format(comment)
+    
+    if LOGFILE is not None:
+        fp = open(LOGFILE, mode)
+        fp.write(msg)
+        fp.close()
+    
+    if verbose:
+        print(msg)
+        
+def log_exception(LOGFILE, traceback, verbose=True, mode='a'):
+    """
+    Log exception information to a file, or print to screen
+    
+    Parameters
+    ----------
+    LOGFILE : str or None
+        Output file.  If `None`, then force `verbose=True`.
+    
+    traceback : builtin traceback module
+        Exception traceback, from global `import traceback`.
+    
+    verbose : bool
+        Print exception to stdout.
+    
+    mode : 'a', 'w'
+        File mode on `open(LOGFILE, mode)`, i.e., append or write.
+    
+    """
+    import time
+    
+    trace = traceback.format_exc(limit=2)
+    log = '\n########################################## \n# ! Exception ({0})\n'.format(time.ctime())
+    log += '#\n# !'+'\n# !'.join(trace.split('\n'))
+    log += '\n######################################### \n\n'
+    if verbose | (LOGFILE is None):
+        print(log)
+        
+    if LOGFILE is not None:
+        fp = open(LOGFILE, mode)
+        fp.write(log)
+        fp.close()
+
+##########
+# SREGIONs
+##########
+        
 def polygon_to_sregion(poly):
     """
     Convert `shapely.Polygon` vertices to an SREGION string
