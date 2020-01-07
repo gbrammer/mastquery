@@ -860,6 +860,19 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
     grism_patches = {}
     grism_colors = {'g141':'r', 'g102':'orange', 'g800l':'b'}
     
+    # Fix "CLEAR" filters
+    for i, filt_i in enumerate(tab['filter']):
+        if 'clear' in filt_i.lower():
+            spl = filt_i.lower().split(';')
+            if len(spl) > 1:
+                for s in spl:
+                    if 'clear' not in s:
+                        #print(filt_i, s)
+                        filt_i = s.upper()
+                        break
+            
+            tab['filter'][i] = filt_i.upper()
+        
     xra, yra = None, None
     for i in so:
         # in polys:
@@ -874,7 +887,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                     if 'clear' not in s:
                         filt_i = s
                         break
-                        
+                                
         if hasattr(p_i, '__len__'):
             all_p = [p for p in p_i]
         else:
