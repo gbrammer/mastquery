@@ -164,13 +164,16 @@ DEFAULT_QUERY_ASTROQUERY = {'intentType': ['science'], 'mtFlag': ['False'], 'obs
 JWST_QUERY = {'obs_collection': ['JWST']}
 
 def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
-              sort_column=['obs_id', 'filter'],
+              sort_column=['obs_id', 'filter'], position_box=True, 
               base_query=DEFAULT_QUERY_ASTROQUERY.copy(), **kwargs):
     """
     Run MAST query with astroquery.mast.  
     
     All columns listed at https://mast.stsci.edu/api/v0/_c_a_o_mfields.html 
     can be used for the query.
+    
+    position_box: query on s_ra / s_dec positions rather than position 
+                  coordinates
     """                  
     # arguments
     frame = inspect.currentframe()
@@ -205,9 +208,12 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
             
     if (box is not None):
         ra, dec, radius = box
-        coo = SkyCoord(ra*u.deg, dec*u.deg)        
-        query_args['coordinates'] = coo
-        query_args['radius'] = radius*u.arcmin
+        #coo = SkyCoord(ra*u.deg, dec*u.deg)        
+        #query_args['coordinates'] = coo
+        #query_args['radius'] = radius*u.arcmin
+        cosd = np.cos(box[1]/180*np.pi)
+        query_args['s_ra'] = box[0] + np.array([-1, 1])*box[2]/60/cosd
+        query_args['s_dec'] = box[1] + np.array([-1, 1])*box[2]/60
         
     try:
         tab = Observations.query_criteria(**query_args)                               
@@ -427,6 +433,7 @@ def instrument_polygon(tab_row, bad_area=0.3):
     alignment
     """
     from shapely.geometry import Polygon, Point
+    import shapely.affinity
 
     pt = Point(tab_row['ra'], tab_row['dec'])
     pt_buff = pt.buffer(16./60)
@@ -436,11 +443,15 @@ def instrument_polygon(tab_row, bad_area=0.3):
         area = utils.INSTRUMENT_AREAS[tab_row['instrument_name']]
     else:
         area = 8.
-    
+        
     try:
         poly = parse_polygons(tab_row['footprint'])#[0]
     except:
-        pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+        circ = pt.buffer(1)
+        cosd = np.cos(tab_row['dec']/180*np.pi)
+        rcirc = np.sqrt(area)*np.sqrt(2)/60.
+        pshape = shapely.affinity.scale(circ, rcirc*cosd, rcirc)
+
         IS_BAD = True
         keep_poly = [np.array(pshape.boundary.xy).T]
         return pshape, IS_BAD, keep_poly
@@ -449,7 +460,7 @@ def instrument_polygon(tab_row, bad_area=0.3):
     keep_poly = []
     for pi in poly:
         try:
-            psh = Polygon(pi)
+            psh = Polygon(pi).buffer(0.01/60)
         except:
             continue
         
@@ -463,7 +474,7 @@ def instrument_polygon(tab_row, bad_area=0.3):
         else:
             pshape = pshape.union(psh)
         
-    msg = f"    Footprint problem: {tab_row['obs_id']}, area={area:4.1f}, {tab_row['instrument_name']:>10}, npoly={len(poly)}"
+    msg = "    Footprint problem: {tab_row['obs_id']}, area={area:4.1f}, {tab_row['instrument_name']:>10}, npoly={len(poly)}".format(area=area)
     
     # Got to the end and pshape is None, probably because doesn't 
     # overlap with the target position 
@@ -471,17 +482,20 @@ def instrument_polygon(tab_row, bad_area=0.3):
     IS_BAD = False
     if pshape is None:
         print(msg)
-        pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
         IS_BAD = True
     else:
         if pshape.area < bad_area*area/3600:
             print(msg)
-            pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
             IS_BAD = True
     
     if IS_BAD:
+        circ = pt.buffer(1)
+        cosd = np.cos(tab_row['dec']/180*np.pi)
+        rcirc = np.sqrt(area)*np.sqrt(2)/2./60.
+        pshape = shapely.affinity.scale(circ, rcirc/cosd, rcirc)
+
         keep_poly = [np.array(pshape.boundary.xy).T]
-                                    
+        
     return pshape, IS_BAD, keep_poly
     
 def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):

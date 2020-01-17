@@ -10,7 +10,7 @@ import numpy as np
 
 from astropy.table import Table
 
-INSTRUMENT_AREAS = {'WFC3/IR':2.2,
+INSTRUMENT_AREAS = {'WFC3/IR':4.5,
                     'WFPC2/WFC':8.,
                     'WFPC2/PC':8.,
                     'ACS/WFC':11.3,

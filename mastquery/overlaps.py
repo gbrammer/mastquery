@@ -231,7 +231,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             #         pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
                 
             polygons.append(pshape.buffer(poly_buffer))
-    
+            
     # match_poly = [polygons[0]]
     # match_ids = [[0]]
     # 
@@ -387,7 +387,9 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         pointing_overlaps = np.zeros(len(xtab), dtype=bool)
         for j in range(len(xtab)):            
             pshape, is_bad, poly = query.instrument_polygon(xtab[j])
-
+            # if is_bad:
+            #     print('xxxx', pshape.centroid.xy, pshape.area*3600., p.centroid.xy, p.area*3600)
+                
             # try:
             #     poly = query.parse_polygons(xtab['footprint'][j])#[0]
             # except:
@@ -427,6 +429,9 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             #     if pshape.area < 0.1*area/3600:
             #         print(msg)
             #         pshape = pt.buffer(np.sqrt(area)*np.sqrt(2)/60.)
+            
+            isect = p.intersection(pshape.buffer(0.0001))
+            pointing_overlaps[j] = isect.area > min_area*pshape.area
                                     
             try:
                 isect = p.intersection(pshape.buffer(0.0001))
@@ -779,6 +784,7 @@ def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS,
         
         for j in range(sel.sum()):
             p_j, is_bad, poly = query.instrument_polygon(tab[sel][j])
+                
             if tab_poly is None:
                 tab_poly = p_j.buffer(0.001)
             
@@ -1462,7 +1468,7 @@ def make_all():
                 continue
             
             field = file.split("_footprint")[0]
-            tab = utils.read_catalog(f'{field}_footprint.fits')
+            tab = utils.read_catalog('{0}_footprint.fits'.format(field))
             print(field, tab.meta['BOXRAD'])
             if tab.meta['BOXRAD'] > 11:
                 continue
