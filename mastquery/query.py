@@ -474,7 +474,7 @@ def instrument_polygon(tab_row, bad_area=0.3):
         else:
             pshape = pshape.union(psh)
         
-    msg = "    Footprint problem: {tab_row['obs_id']}, area={area:4.1f}, {tab_row['instrument_name']:>10}, npoly={len(poly)}".format(area=area)
+    msg = "    Footprint problem: {obs_id}, area={area:4.1f}, {inst:>10}, npoly={npoly}".format(obs_id=tab_row['obs_id'], inst=tab_row['instrument_name'], area=area, npoly=len(poly))
     
     # Got to the end and pshape is None, probably because doesn't 
     # overlap with the target position 
@@ -584,8 +584,11 @@ def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486
     from astropy.coordinates import Angle
     import astropy.units as u
     
-    p = parse_polygons(polystr)[0]
-    
+    try:
+        p = parse_polygons(polystr)[0]
+    except:
+        return -999
+        
     # try:
     #     p = parse_polygons(polystr)[0]
     # except:
