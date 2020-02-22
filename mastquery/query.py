@@ -393,15 +393,23 @@ def add_postcard(table, resolution=256):
    if False:
        tab = grizli.utils.GTable(table)
        tab['observation_id','filter','orientat','postcard'][tab['visit'] == 1].write_sortable_html('tab.html', replace_braces=True, localhost=True, max_lines=10000, table_id=None, table_class='display compact', css=None)
-        
+
+NCIRCLE = 36
+THETA = np.linspace(0, 2*np.pi, NCIRCLE) 
+XCIRCLE = np.cos(THETA)
+YCIRCLE = np.sin(THETA)
+
 def parse_polygons(polystr):
     from astropy.coordinates import Angle
     import astropy.units as u
     
     if hasattr(polystr, 'decode'):
-        polyspl = polystr.decode('utf-8').strip().split('POLYGON')#strip()[1:-1].split(',')
+        decoded = polystr.decode('utf-8').strip().upper()
     else:
-        polyspl = polystr.strip().split('POLYGON')
+        decoded = polystr.strip().upper()
+    
+    polyspl = decoded.replace('POLYGON','xxx').replace('CIRCLE','xxx')
+    polyspl = polyspl.split('xxx')
     
     poly = []
     for pp in polyspl:
@@ -415,9 +423,16 @@ def parse_polygons(polystr):
                 break
             except:
                 continue
-    
-        poly_i = np.cast[float](spl[ip:]).reshape((-1,2)) #[np.cast[float](p.split()).reshape((-1,2)) for p in spl]
-    
+        
+        
+        try:
+            poly_i = np.cast[float](spl[ip:]).reshape((-1,2)) #[np.cast[float](p.split()).reshape((-1,2)) for p in spl]
+        except:
+            # Circle
+            x0, y0, r0 = np.cast[float](spl[ip:])
+            cosd = np.cos(y0/180*np.pi)
+            poly_i = np.array([XCIRCLE*r0/cosd+x0, YCIRCLE*r0+y0]).T
+            
         ra = Angle(poly_i[:,0]*u.deg).wrap_at(360*u.deg).value
         poly_i[:,0] = ra
         if len(poly_i) < 2:

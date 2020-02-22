@@ -186,6 +186,19 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         poly_query = False
         for i in range(len(tab)):
             
+            # Fix "CLEAR" filters
+            for i, filt_i in enumerate(tab['filter']):
+                if 'clear' in filt_i.lower():
+                    spl = filt_i.lower().split(';')
+                    if len(spl) > 1:
+                        for s in spl:
+                            if 'clear' not in s:
+                                #print(filt_i, s)
+                                filt_i = s.upper()
+                                break
+
+                    tab['filter'][i] = filt_i.upper()
+            
             pshape, is_bad, poly = query.instrument_polygon(tab[i])
             
             # poly = query.parse_polygons(tab['footprint'][i])#[0]
@@ -1179,15 +1192,307 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
         sel = tab['assoc_idx'] == assoc
         tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
 
+def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r', rerun_query=True, query_kwargs={'public':False, 'science':False, 'get_html_version':True}):
+    """
+    Query ALMA archive around the HST data
+    """
+    import os
+    import time
+    import urllib
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    from astropy.table import Table
+    from astropy.time import Time
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    
+    from shapely.geometry import Polygon, Point
+    from descartes import PolygonPatch
+    
+    from astroquery.eso import Eso
+    eso = Eso()
+    
+    NOW = Time.now().iso
+    
+    meta = tab.meta
+    xr = (meta['XMIN'], meta['XMAX'])
+    yr = (meta['YMIN'], meta['YMAX'])
+    ra, dec = meta['BOXRA'], meta['BOXDEC']
+    
+    cosd = np.cos(dec/180*np.pi)
+    dx = (xr[1]-xr[0])*cosd*60
+    dy = (yr[1]-yr[0])*60
+    
+    box_width = np.maximum(dx, dy)
+    query_size = np.maximum(min_size, box_width/2)
+    
+    coo = SkyCoord(ra, dec, unit='deg')
+    
+    muse_file = '{0}_muse.ecsv'.format(tab.meta['NAME'])
+    if (not os.path.exists(muse_file)) | rerun_query:
+        res = eso.query_instrument('muse', coord1=ra, coord2=dec, box="00 {0:02} 00".format(int(np.ceil(box_width))), dp_cat='SCIENCE')
+    
+        res.meta['TQUERY'] = (NOW, 'Timestamp of query execution')
+        res.meta['RA'] = (ra, 'Query center, RA')
+        res.meta['DEC'] = (dec, 'Query center, Dec')
+        res.meta['R'] = (query_size, 'Query radius, arcmin')
+        res.meta['N'] = len(res)
+        res.meta['NAME'] = tab.meta['NAME']
+    
+        if len(res) > 0:
+            res['field_root'] = res.meta['NAME'].lower()
+            
+        res.write(muse_file, overwrite=True, format='ascii.ecsv')
+    else:
+        res = Table.read(muse_file, format='ascii.ecsv')
+        
+    if make_figure & (len(res) > 0):
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        #ax.set_xlim(xr)
+        #ax.set_ylim(yr)
+
+        # Grow by factor of 2
+        #expand = 2
+        
+        expand = np.maximum(min_size*2/np.minimum(dx, dy), 1)
+        
+        ax.set_xlim(ra+dx/60/2*expand/cosd, ra-dx/60/2*expand/cosd)
+        ax.set_ylim(dec-dy/60/2*expand, dec+dy/60/2*expand)
+        
+        ax.scatter(ra, dec, marker='+', color='k')
+        
+        # HST patch
+        p0 = np.array([[xr[0], yr[0]],
+                       [xr[0], yr[1]],
+                       [xr[1], yr[1]],
+                       [xr[1], yr[0]]])
+
+        p_hst = None
+        for fph in tab['footprint']:
+            for p in query.parse_polygons(fph):
+                p_j = Polygon(p).buffer(0.001)
+                if p_hst is None:
+                    p_hst = p_j
+                else:
+                    p_hst = p_hst.union(p_j)
+
+        ax.add_patch(PolygonPatch(p_hst, ec='k', fc='None', 
+                              alpha=0.8, label='HST'))
+        
+        band_labels = []
+        
+        is_public = res['Release Date'] < NOW
+        
+        for i in range(len(res)):
+            fpstr = 'CIRCLE {0} {1} 0.008333'.format(res['RA'][i], res['DEC'][i])
+            fps = query.parse_polygons(fpstr)
+            
+            if 'NOAO' in res['INS MODE'][i]:
+                color = '#1f77b4'
+            else:
+                color = '#d62728'
+                            
+            if is_public[i]:
+                linestyle='-'
+            else:
+                linestyle='--'
+                                    
+            for j, fp in enumerate(fps):
+                fp_j = Polygon(fp).buffer(0.1/3600.)
+                if res['INS MODE'][i] in band_labels:
+                    label = None
+                else:
+                    band_labels.append(res['INS MODE'][i])
+                    label = '{0}'.format(res['INS MODE'][i])
+                    
+                ax.add_patch(PolygonPatch(fp_j, ec=color, fc='None', 
+                                      alpha=0.8, label=label, 
+                                      linestyle=linestyle))
+                
+                if is_public[i]:
+                    ax.add_patch(PolygonPatch(fp_j, ec=color, fc=color, 
+                                          alpha=0.1+0.1*is_public[i]))
+                                   
+        ax.grid()
+        ax.set_title('{0} MUSE'.format(res.meta['NAME']))
+        
+        #ax.set_xlim(ax.get_xlim()[::-1])
+        
+        ax.set_aspect(1/cosd)
+        ax.legend(ncol=1, fontsize=6, loc='upper right')
+        fig.set_size_inches(xsize, xsize*np.clip(dy/dx, 0.2, 5))
+        
+        if nlabel > 0:
+            draw_axis_labels(ax=ax, nlabel=nlabel)
+        
+        ax.text(0.03, 0.03, NOW, fontsize=5, transform=ax.transAxes, ha='left', va='bottom')
+
+        fig.tight_layout(pad=0.2)
+        fig.savefig('{0}_muse.png'.format(meta['NAME']))
+        
+    else:
+        fig = None
+        
+    return res, fig
+
+def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r', rerun_query=True, query_kwargs={'public':False, 'science':False, 'get_html_version':True}):
+    """
+    Query ALMA archive around the HST data
+    """
+    import os
+    import time
+    import urllib
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    from astropy.table import Table
+    from astropy.time import Time
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    
+    from shapely.geometry import Polygon
+    from descartes import PolygonPatch
+    
+    from astroquery.alma import Alma
+    from astroquery.alma import utils as alma_utils
+    
+    NOW = Time.now().iso
+    
+    meta = tab.meta
+    xr = (meta['XMIN'], meta['XMAX'])
+    yr = (meta['YMIN'], meta['YMAX'])
+    ra, dec = meta['BOXRA'], meta['BOXDEC']
+    
+    cosd = np.cos(dec/180*np.pi)
+    dx = (xr[1]-xr[0])*cosd*60
+    dy = (yr[1]-yr[0])*60
+    
+    box_width = np.maximum(dx, dy)
+    query_size = np.maximum(min_size, box_width/2)
+    
+    coo = SkyCoord(ra, dec, unit='deg')
+    
+    alma_file = '{0}_alma.ecsv'.format(tab.meta['NAME'])
+    if (not os.path.exists(alma_file)) | rerun_query:
+        res = Alma.query_region(coo, query_size*u.arcmin, **query_kwargs)
+    
+        res.meta['TQUERY'] = (NOW, 'Timestamp of query execution')
+        res.meta['RA'] = (ra, 'Query center, RA')
+        res.meta['DEC'] = (dec, 'Query center, Dec')
+        res.meta['R'] = (query_size, 'Query radius, arcmin')
+        res.meta['N'] = len(res)
+        res.meta['NAME'] = tab.meta['NAME']
+    
+        if len(res) > 0:
+            res['field_root'] = res.meta['NAME'].lower()
+            
+        res.write(alma_file, overwrite=True, format='ascii.ecsv')
+    else:
+        res = Table.read(alma_file, format='ascii.ecsv')
+        
+    if make_figure & (len(res) > 0):
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        #ax.set_xlim(xr)
+        #ax.set_ylim(yr)
+
+        # Grow by factor of 2
+        #expand = 2
+        
+        expand = np.maximum(min_size*2/np.minimum(dx, dy), 1)
+        
+        ax.set_xlim(ra+dx/60/2*expand/cosd, ra-dx/60/2*expand/cosd)
+        ax.set_ylim(dec-dy/60/2*expand, dec+dy/60/2*expand)
+        
+        ax.scatter(ra, dec, marker='+', color='k')
+        
+        # HST patch
+        p0 = np.array([[xr[0], yr[0]],
+                       [xr[0], yr[1]],
+                       [xr[1], yr[1]],
+                       [xr[1], yr[0]]])
+
+        p_hst = None
+        for fph in tab['footprint']:
+            for p in query.parse_polygons(fph):
+                p_j = Polygon(p).buffer(0.001)
+                if p_hst is None:
+                    p_hst = p_j
+                else:
+                    p_hst = p_hst.union(p_j)
+
+        ax.add_patch(PolygonPatch(p_hst, ec='k', fc='None', 
+                              alpha=0.8, label='HST'))
+        
+        band_labels = []
+        so = np.argsort(res['Band'])
+        
+        is_public = res['Release date'] < NOW
+        
+        for i in so:
+            fpstr = res['Footprint'][i]
+            fps = query.parse_polygons(fpstr)
+            is_mosaic = res['Mosaic'][i] in ['mosaic']
+            try:
+                color = plt.cm.get_cmap(cmap)(int(res['Band'][i])/10)
+            except:
+                color = 'r'
+            
+            if is_public[i]:
+                linestyle='-'
+            else:
+                linestyle='--'
+                                    
+            for j, fp in enumerate(fps):
+                fp_j = Polygon(fp).buffer(0.1/3600.)
+                if res['Band'][i] in band_labels:
+                    label = None
+                else:
+                    band_labels.append(res['Band'][i])
+                    label = 'Band {0}'.format(res['Band'][i])
+                    
+                ax.add_patch(PolygonPatch(fp_j, ec=color, fc='None', 
+                                      alpha=0.8, label=label, 
+                                      linestyle=linestyle))
+                
+                if is_mosaic & is_public[i]:
+                    ax.add_patch(PolygonPatch(fp_j, ec=color, fc=color, 
+                                          alpha=0.1+0.1*is_public[i]))
+                                   
+        ax.grid()
+        ax.set_title('{0} ALMA'.format(res.meta['NAME']))
+        
+        #ax.set_xlim(ax.get_xlim()[::-1])
+        
+        ax.set_aspect(1/cosd)
+        ax.legend(ncol=1, fontsize=6, loc='upper right')
+        fig.set_size_inches(xsize, xsize*np.clip(dy/dx, 0.2, 5))
+        
+        if nlabel > 0:
+            draw_axis_labels(ax=ax, nlabel=nlabel)
+        
+        ax.text(0.03, 0.03, NOW, fontsize=5, transform=ax.transAxes, ha='left', va='bottom')
+
+        fig.tight_layout(pad=0.2)
+        fig.savefig('{0}_alma.png'.format(meta['NAME']))
+    else:
+        fig = None
+        
+    return res, fig
+    
 #### URLs for IPAC / Spitzer queries
+
+# SHA web query
+SHA_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/#id=SearchByPosition&RequestClass=ServerRequest&DoSearch=true&SearchByPosition.field.radius={size}&SearchByPosition.field.matchByAOR=false&UserTargetWorldPt={ra};{dec};EQ_J2000&SimpleTargetPanel.field.resolvedBy=nedthensimbad&MoreOptions.field.prodtype=aor,pbcd,bcd,supermosaic,inventory&InstrumentPanel.field.irac=_all_&InstrumentPanel.field.mips=_all_&InstrumentPanel.field.irs=_none_&InstrumentPanel.field.panel=instrument&InventorySearch.radius={size}&shortDesc=Position&isBookmarkAble=true&isDrillDownRoot=true&isSearchResult=true"
 
 # API table output
 IPAC_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/servlet/DataService?RA={ra}&DEC={dec}&SIZE={size}&VERB=3&DATASET=ivo%3A%2F%2Firsa.ipac%2Fspitzer.level{level}"
 
 IPAC_AOR_URL = "https://irsa.ipac.caltech.edu/applications/Spitzer/SHA/servlet/DataService?REQKEY={aor}&VERB=3&DATASET=ivo%3A%2F%2Firsa.ipac%2Fspitzer.level{level}"
-
-# SHA web query
-SHA_URL = "https://sha.ipac.caltech.edu/applications/Spitzer/SHA/#id=SearchByPosition&RequestClass=ServerRequest&DoSearch=true&SearchByPosition.field.radius={size}&SearchByPosition.field.matchByAOR=false&UserTargetWorldPt={ra};{dec};EQ_J2000&SimpleTargetPanel.field.resolvedBy=nedthensimbad&MoreOptions.field.prodtype=aor,pbcd,bcd,supermosaic,inventory&InstrumentPanel.field.irac=_all_&InstrumentPanel.field.mips=_all_&InstrumentPanel.field.irs=_none_&InstrumentPanel.field.panel=instrument&InventorySearch.radius={size}&shortDesc=Position&isBookmarkAble=true&isDrillDownRoot=true&isSearchResult=true"
         
 def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlabel=3, min_size=4, maxwavelength=20):
     """
