@@ -48,7 +48,8 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     # Loop through polygons and combine those that overlap
     for i in range(1,len(polygons)):
         if verbose > 1:
-            print(utils.NO_NEWLINE+'Parse {0:4d}'.format(i))
+            print(utils.NO_NEWLINE+'Parse {0:4d} (N={1})'.format(i, 
+                                                    len(match_poly)))
         
         has_match = False
         for j in range(len(match_poly)):
@@ -60,7 +61,7 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
                 test_area = 0.5/3600.
                 
             if isect.area > test_area:
-                #print(isect.area*3600)
+                #print(j, isect.area*3600)
                 match_poly[j] = match_poly[j].union(polygons[i])
                 match_ids[j].append(i)
                 has_match = True
@@ -183,22 +184,24 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         use_parent = False
         show_parent = True
     else:
+        print('Parse polygons')
         poly_query = False
-        for i in range(len(tab)):
-            
-            # Fix "CLEAR" filters
-            for i, filt_i in enumerate(tab['filter']):
-                if 'clear' in filt_i.lower():
-                    spl = filt_i.lower().split(';')
-                    if len(spl) > 1:
-                        for s in spl:
-                            if 'clear' not in s:
-                                #print(filt_i, s)
-                                filt_i = s.upper()
-                                break
+        
+        # Fix "CLEAR" filters
+        for i, filt_i in enumerate(tab['filter']):
+            if 'clear' in filt_i.lower():
+                spl = filt_i.lower().split(';')
+                if len(spl) > 1:
+                    for s in spl:
+                        if 'clear' not in s:
+                            #print(filt_i, s)
+                            filt_i = s.upper()
+                            break
 
-                    tab['filter'][i] = filt_i.upper()
-            
+                tab['filter'][i] = filt_i.upper()
+        
+        for i in range(len(tab)):
+                        
             pshape, is_bad, poly = query.instrument_polygon(tab[i])
             
             # poly = query.parse_polygons(tab['footprint'][i])#[0]
@@ -734,8 +737,11 @@ def parse_overlap_table(tab):
             if i == 0:
                 gpoly = pshape
             else:
-                gpoly = gpoly.union(pshape)
-        
+                try:
+                    gpoly = gpoly.union(pshape)
+                except:
+                    print(f'Poly failed ({i})')
+                    
         cosd = np.cos(tab.meta['DEC']/180*np.pi)
         area = gpoly.area*3600.*cosd
         properties.append(area)
