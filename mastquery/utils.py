@@ -440,7 +440,45 @@ def radec_to_targname(ra=0, dec=0, round_arcsec=(4, 60), precision=2, targstr='j
         
     return targname
     
-def get_irsa_dust(ra, dec, type='SandF'):
+def get_mw_dust(ra, dec, **kwargs):
+    """
+    Wrapper around functions to try to query for the MW E(B-V)
+    """
+    try:
+        ebv = get_dustmaps_dust(ra, dec, web=True)
+        return ebv
+    except:
+        pass
+        
+    try:
+        ebv = get_dustmaps_dust(ra, dec, web=False)
+        return ebv
+    except:
+        pass
+    
+    try:
+        ebv = get_irsa_dust(ra, dec, **kwargs)
+        return ebv
+    except:
+        pass
+        
+def get_dustmaps_dust(ra, dec, web=True, **kwargs):
+    "Use https://github.com/gregreen/dustmaps"
+    
+    from dustmaps.sfd import SFDQuery, SFDWebQuery
+    from astropy.coordinates import SkyCoord
+    
+    coords = SkyCoord(ra, dec, unit='deg', frame='icrs')
+    
+    if web:
+        sfd = SFDWebQuery()
+    else:
+        sfd = SFDQuery()
+        
+    ebv = sfd(coords)
+    return ebv
+    
+def get_irsa_dust(ra, dec, type='SandF', **kwargs):
     """
     Get Galactic dust reddening from NED/IRSA at a given position
     http://irsa.ipac.caltech.edu/applications/DUST/docs/dustProgramInterface.html
@@ -463,14 +501,15 @@ def get_irsa_dust(ra, dec, type='SandF'):
     """
     import os
     import tempfile   
-    import urllib.request
+    import urllib.request as requester
+        
     from astropy.table import Table
     from lxml import objectify
     
     query = 'http://irsa.ipac.caltech.edu/cgi-bin/DUST/nph-dust?locstr={0:.4f}+{1:.4f}+equ+j2000'.format(ra, dec)
     
-    req = urllib.request.Request(query)
-    response = urllib.request.urlopen(req)
+    req = requester.Request(query)
+    response = requester.urlopen(req)
     resp_text = response.read().decode('utf-8')
     
     root = objectify.fromstring(resp_text)
