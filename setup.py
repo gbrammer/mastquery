@@ -18,7 +18,8 @@ version = p.communicate()[0].decode("utf-8").strip()
 # version = "0.3.0" # New target formatting
 # version = "0.4.0" # Try to use astroquery rather than MAST CAOM
 # version = "0.4.1" # Bug in shapes
-version = "1.0" # Stable release, dustmaps dust
+#version = "1.0" # Stable release, dustmaps dust
+version = "1.0.1" # Use new get_mw_dust in overlaps
 
 # Set this to true to add install_requires to setup
 # Turned off for incremental builds as it kills "reload(mastquery.query)" 

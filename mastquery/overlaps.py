@@ -384,7 +384,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
                 xtab = xtab[~subarray]
             
         try:
-            ebv = utils.get_irsa_dust(ra, dec, type='SandF')
+            #ebv = utils.get_irsa_dust(ra, dec, type='SandF')
+            ebv = utils.get_mw_dust(ra, dec)
         except:
             print('Couldn\'t connect to IRSA dust server, setting MW_EBV=0')
             ebv = 0
