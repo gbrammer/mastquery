@@ -461,7 +461,10 @@ def get_mw_dust(ra, dec, **kwargs):
         return ebv
     except:
         pass
-        
+    
+    # All failed
+    return 0.00
+    
 def get_dustmaps_dust(ra, dec, web=True, **kwargs):
     "Use https://github.com/gregreen/dustmaps"
     
