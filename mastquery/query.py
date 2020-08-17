@@ -124,28 +124,49 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
         try:
             from astroquery.mast import Observations
             prod_tab = Observations.get_product_list(obsid)
+            force_manual = False
         except:
-            request = {'service':'Mast.Caom.Products',
+            force_manual = True
+    else:
+        force_manual = True
+    
+    if force_manual:
+        request = {'service':'Mast.Caom.Products',
                'params':{'obsid':obsid},
                'format':'json',
                'pagesize':10000,
                'page':1}   
         
-            headers, outString = utils.mastQuery(request)
-            outData = json.loads(outString)
-            prod_tab = utils.mastJson2Table(outData)
-    else:
-        request = {'service':'Mast.Caom.Products',
-           'params':{'obsid':obsid},
-           'format':'json',
-           'pagesize':10000,
-           'page':1}   
-    
         headers, outString = utils.mastQuery(request)
         outData = json.loads(outString)
         prod_tab = utils.mastJson2Table(outData)
+    
+    if np.cast[int](prod_tab['parent_obsid'].filled('0')).sum() == 0:
+        print('MAST product database problem with ``parent_obsid``, try one-by-one...')
+        # Problem with database, so query one by one
+        prods = []
+        if force_manual:
+            for obs in query_tab['obsid']:
+                request['params']['obsid'] = '{0}'.format(obs)
+                headers, outString = utils.mastQuery(request)
+                outData = json.loads(outString)
+                prod = utils.mastJson2Table(outData)
+                prod.remove_column('parent_obsid')
+                prod['parent_obsid'] = '{0}'.format(obs)
+                prods.append(prod)
+        else:
+            for obs in query_tab['obsid']:
+                prod = Observations.get_product_list('{0}'.format(obs))
+                prod.remove_column('parent_obsid')
+                prod['parent_obsid'] = '{0}'.format(obs)
+                prods.append(prod)
         
+        prod_tab = table.vstack(prods)
+    
     prod_tab.rename_column('parent_obsid', 'obsid')
+    if query_tab['obsid'].dtype != prod_tab['obsid'].dtype:
+        prod_tab['obsid'] = np.cast[query_tab['obsid']](prod_tab['obsid'])
+        
     prod_tab.remove_column('proposal_id')
     prod_tab.rename_column('obs_id', 'observation_id')
     
@@ -158,6 +179,7 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
     full_tab.sort(['observation_id'])
     
     return full_tab
+
 
 DEFAULT_QUERY_ASTROQUERY = {'intentType': ['science'], 'mtFlag': ['False'], 'obs_collection': ['HST']}
 
@@ -237,7 +259,8 @@ def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
                        rename_columns=rename_columns,
                        sort_column=sort_column)
     return tab
-    
+
+
 def run_query_old(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filters=[], extensions=['RAW','C1M'], base_query=DEFAULT_QUERY, maxitems=100000, timeout=300, rename_columns=DEFAULT_RENAME, lower=True, sort_column=['obs_id', 'filter'], remove_tempfile=True, get_query_string=False, quiet=True, coordinate_transforms=True, get_exptime=True):
     """
     
@@ -330,7 +353,8 @@ def run_query_old(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filter
                        rename_columns=rename_columns,
                        sort_column=sort_column)
     return tab
-    
+
+
 def modify_table(tab, get_exptime=True, rename_columns=DEFAULT_RENAME, 
                  sort_column=['obs_id', 'filter']):
     
@@ -371,6 +395,7 @@ def modify_table(tab, get_exptime=True, rename_columns=DEFAULT_RENAME,
         
     return tab
 
+
 def fix_byte_columns(tab):
     for col in tab.colnames:
         try:
@@ -381,6 +406,7 @@ def fix_byte_columns(tab):
         except:
             pass
             
+
 def add_postcard(table, resolution=256):
     
    url = ['http://archives.esac.esa.int/ehst-sl-server/servlet/data-action?OBSERVATION_ID={0}&RETRIEVAL_TYPE=POSTCARD&RESOLUTION={1}'.format(o, resolution) for o in table['observation_id']]
@@ -398,6 +424,7 @@ NCIRCLE = 36
 THETA = np.linspace(0, 2*np.pi, NCIRCLE) 
 XCIRCLE = np.cos(THETA)
 YCIRCLE = np.sin(THETA)
+
 
 def parse_polygons(polystr):
     from astropy.coordinates import Angle
@@ -441,6 +468,7 @@ def parse_polygons(polystr):
         poly.append(poly_i)
         
     return poly
+
 
 def instrument_polygon(tab_row, bad_area=0.3):
     """
@@ -513,6 +541,7 @@ def instrument_polygon(tab_row, bad_area=0.3):
         
     return pshape, IS_BAD, keep_poly
     
+
 def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):
     """
     Set default print formats
@@ -522,11 +551,13 @@ def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):
         if f in table.colnames:
             table[f].format = formats[f]
 
+
 def set_expstart(table):
     from astropy import time
     mjd = time.Time(table['t_min'], format='mjd')
     table['expstart'] = mjd.iso
     
+
 def set_transformed_coordinates(table):
     """
     Set GeocentricTrueEcliptic and Galactic coordinate tranformations
@@ -551,7 +582,8 @@ def set_transformed_coordinates(table):
 
     table['gal_b'] = gal.b
     table['gal_b'].format = '.1f'
-    
+
+
 def set_area_column(table):
     """
     Make a column in the `table` computing each orientation with
@@ -570,7 +602,8 @@ def set_area_column(table):
     table['area'] = area
     table['area'].format = '.1f'
     table['area'].unit = u.arcmin**2
-    
+
+
 def get_footprint_area(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486 127.423118 18.887458 127.463833 18.889591'):
     from shapely.geometry import Polygon
     
