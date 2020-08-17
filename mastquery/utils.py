@@ -366,16 +366,16 @@ def radec_to_targname(ra=0, dec=0, round_arcsec=(4, 60), precision=2, targstr='j
         >>> cosd = np.cos(dec/180*np.pi)
         >>> ra = 2*15 + 2./60*15 + 2.2/3600.*15
         
-        # Round to nearest arcmin
+        # Round to nearest arcmin (4 seconds in RAh)
         >>> from mastquery.utils import radec_to_targname
         >>> print(radec_to_targname(ra=ra, dec=dec, round_arcsec=(4,60),
-                               targstr='j{rah}{ram}{ras}{sign}{ded}{dem}'))
-        j020204m1010 # (rounded to 4 arcsec in RA)
+        ...                    targstr='j{rah}{ram}{ras}{sign}{ded}{dem}'))
+        j020204m1010
         
         # Full precision
         >>> targstr = 'j{rah}{ram}{ras}.{rass}{sign}{ded}{dem}{des}.{dess}'
         >>> print(radec_to_targname(ra, dec,round_arcsec=(0.0001, 0.0001),
-                                    precision=3, targstr=targstr))
+        ...                         precision=3, targstr=targstr))
         j020202.200m101010.100
         
     Parameters
