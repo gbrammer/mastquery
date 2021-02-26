@@ -131,6 +131,8 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
         force_manual = True
     
     if force_manual:
+        print('Query with `utils.mastQuery`')
+        
         request = {'service':'Mast.Caom.Products',
                'params':{'obsid':obsid},
                'format':'json',
@@ -141,7 +143,12 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
         outData = json.loads(outString)
         prod_tab = utils.mastJson2Table(outData)
     
-    if np.cast[int](prod_tab['parent_obsid'].filled('0')).sum() == 0:
+    if hasattr(prod_tab['parent_obsid'], 'filled'):
+        obsint = np.cast[int](prod_tab['parent_obsid'].filled('0'))
+    else:
+        obsint = np.cast[int](prod_tab['parent_obsid'])
+        
+    if obsint.sum() == 0:
         print('MAST product database problem with ``parent_obsid``, try one-by-one...')
         # Problem with database, so query one by one
         prods = []
