@@ -45,14 +45,33 @@ DEFAULT_COLUMN_FORMAT = {'t_min':'.4f',
 # Don't get calibrations.  Can't use "INTENT LIKE 'SCIENCE'" because some 
 # science observations are flagged as 'Calibration' in the ESA HSA.
 #DEFAULT_QUERY = {'project':['HST'], 'intentType':['science'], 'mtFlag':['False']}
-DEFAULT_QUERY = {'obs_collection':['HST'], 'intentType':['science'], 'mtFlag':['False']} #, 'dataRights':['PUBLIC']}
+# DEFAULT_QUERY = {'obs_collection':['HST'], 
+#                  'intentType':['science'], 
+#                  'mtFlag':['False']} 
+
+PUBLIC = {'dataRights':['PUBLIC']}
+
+DEFAULT_QUERY = {'intentType': ['science'], 
+                 'mtFlag': ['False'], 
+                 'obs_collection': ['HST'], 
+                 'project':['HST'], 
+                 't_exptime':[1,100000], # Some buggy exposures in database
+                 }
+
+JWST_QUERY = {'obs_collection': ['JWST']}
 
 # DEFAULT_EXTRA += ["TARGET.TARGET_NAME NOT LIKE '{0}'".format(calib) 
 #                  for calib in ['DARK','EARTH-CALIB', 'TUNGSTEN', 'BIAS',
 #                                'DARK-EARTH-CALIB', 'DARK-NM', 'DEUTERIUM',
 #                                'INTFLAT', 'KSPOTS', 'VISFLAT']]
 
-INSTRUMENT_DETECTORS = {'WFC3/UVIS':'UVIS', 'WFC3/IR':'IR', 'ACS/WFC':'WFC', 'ACS/HRC':'HRC', 'WFPC2':'1', 'STIS/NUV':'NUV-MAMA', 'STIS/ACQ':'CCD'}
+INSTRUMENT_DETECTORS = {'WFC3/UVIS':'UVIS', 
+                        'WFC3/IR':'IR', 
+                        'ACS/WFC':'WFC', 
+                        'ACS/HRC':'HRC', 
+                        'WFPC2':'1', 
+                        'STIS/NUV':'NUV-MAMA', 
+                        'STIS/ACQ':'CCD'}
 
 def get_correct_exposure_times(tab, in_place=True, ni=200):
     # Split into smaller groups
@@ -188,13 +207,9 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
     return full_tab
 
 
-DEFAULT_QUERY_ASTROQUERY = {'intentType': ['science'], 'mtFlag': ['False'], 'obs_collection': ['HST']}
-
-JWST_QUERY = {'obs_collection': ['JWST']}
-
 def run_query(box=None, get_exptime=True, rename_columns=DEFAULT_RENAME,
               sort_column=['obs_id', 'filter'], position_box=True, 
-              base_query=DEFAULT_QUERY_ASTROQUERY.copy(), **kwargs):
+              base_query=DEFAULT_QUERY.copy(), **kwargs):
     """
     Run MAST query with astroquery.mast.  
     

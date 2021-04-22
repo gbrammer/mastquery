@@ -10,8 +10,18 @@ import os
 #update version
 args = 'git describe --tags'
 p = subprocess.Popen(args.split(), stdout=subprocess.PIPE)
-version = p.communicate()[0].decode("utf-8").strip()
+long_version = p.communicate()[0].decode("utf-8").strip()
+spl = long_version.split('-')
 
+if len(spl) == 3:
+    main_version = spl[0]
+    commit_number = spl[1]
+    version_hash = spl[2]
+    version = f'{main_version}.dev{commit_number}'
+else:
+    version_hash = '---'
+    version = long_version
+    
 # version = "0.1.8"
 # version = "0.1.9" # Fix file extensions
 # version = "0.2.0" # Minor changes
@@ -24,7 +34,7 @@ version = p.communicate()[0].decode("utf-8").strip()
 
 # Set this to true to add install_requires to setup
 # Turned off for incremental builds as it kills "reload(mastquery.query)" 
-if True:
+if 0:
     install_requires=[
          'astropy>=2.0.0',
          'astroquery>=0.3.0',
@@ -38,8 +48,12 @@ else:
     install_requires = []    
     
 #lines = open('grizli/version.py').readlines()
-version_str = """# git describe --tags
-__version__ = "{0}"\n""".format(version)
+version_str =f"""# git describe --tags
+__version__ = "{version}"
+__long_version__ = "{long_version}"
+__version_hash__ = "{version_hash}"
+"""
+
 fp = open('mastquery/version.py','w')
 fp.write(version_str)
 fp.close()
