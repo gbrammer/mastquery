@@ -234,6 +234,10 @@ def directDownload(tab, inst_products=DEFAULT_PRODUCTS, path='./', skip_existing
 import os
 def fetch_wfpc2_calib(file='g6q1912hu_r4f.fits', path=os.getenv('uref')):
     from stsci.tools import convertwaiveredfits
+    try: # Python 3.x
+        import http.client as httplib 
+    except ImportError:  # Python 2.x
+        import httplib
     
     server='mast.stsci.edu'
     conn = httplib.HTTPSConnection(server)

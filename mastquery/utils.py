@@ -14,7 +14,16 @@ INSTRUMENT_AREAS = {'WFC3/IR':4.5,
                     'WFPC2/WFC':8.,
                     'WFPC2/PC':8.,
                     'ACS/WFC':11.3,
-                    'WFC3/UVIS':7.3}
+                    'WFC3/UVIS':7.3,
+                    'NIRSPEC/IFU':0.00318, 
+                    'NIRSPEC/MSA':16,
+                    'NIRSPEC/SLIT':0.0002, 
+                    'NIRCAM/IMAGE':12.9,
+                    'NIRCAM/GRISM':11.8,
+                    'NIRISS/IMAGE':5.8,
+                    'MIRI/IMAGE':2.8,
+                    'MIRI/SLIT':0.0007,
+                    'MIRI/IFU':0.0037}
 
 # character to skip clearing line on STDOUT printing
 NO_NEWLINE = '\x1b[1A\x1b[1M'

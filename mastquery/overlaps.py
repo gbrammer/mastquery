@@ -3,6 +3,8 @@ Scripts to find overlapping HST data
 """
 
 import time
+import os
+
 import traceback
 import inspect
 from . import query, utils
@@ -108,7 +110,7 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     #np.save('overlaps.npy', [match_poly, match_ids])
     return match_poly, match_ids
     
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False, min_radius=2):
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False, min_radius=2, bad_area=0.3):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -161,7 +163,6 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
 
     """
     import copy
-    import os
     
     import numpy as np
     import matplotlib.pyplot as plt
@@ -474,7 +475,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             if poly_query:
                 ax.add_patch(PolygonPatch(p, alpha=parent_alpha))
             else:
-                colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha)
+                colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha, bad_area=bad_area)
                 
         ax.scatter(box[0], box[1], marker='+', color='k', zorder=1e4, alpha=0.8)
         
@@ -488,10 +489,12 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         except:
             continue
             
-        patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, alpha=patch_alpha, zorder=2)
+        if patch_alpha > 0:
+            patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, 
+                                  alpha=patch_alpha, zorder=2)
         
-        ax.plot(xy[0], xy[1], alpha=patch_alpha, color=BLUE)
-        ax.add_patch(patch1)
+            ax.plot(xy[0], xy[1], alpha=patch_alpha, color=BLUE)
+            ax.add_patch(patch1)
         
         ax.grid()
         
@@ -921,9 +924,12 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
         
         for p in all_p:
             try:
-                xb, yb = np.array(p.boundary.xy)
+                xb, yb = np.array(p.buffer(0.001).boundary.xy)
             except:
-                continue
+                try:
+                    xb, yb = np.array(p.convex_hull.boundary.xy)
+                except:
+                    continue
                 
             if xra is None:
                 xra = [xb.min(), xb.max()]
@@ -944,6 +950,11 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                 has_grism = True
             elif 'g800l' in xfilt_i:
                 has_grism = True    
+            elif 'gr150' in xfilt_i:
+                has_grism = True
+                c_i = colors[hash(xfilt_i) % len(colors)]
+                grism_colors[xfilt_i] = c_i
+                #print('!!! ', xfilt_i, c_i, grism_colors)
             else:
                 c_i = colors[hash(filt_i) % len(colors)]
                 has_grism = force_fill
@@ -978,7 +989,8 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                 
             else:        
                 if filt_i not in filter_list:
-                    label = '{0:5} {1:>8.1f}'.format(filt_i, tab['exptime'][tab['filter'] == filt_i.upper()].sum()/1000)
+                    label = '{0:5} {1:>8.1f}'.format(filt_i.strip(';'),
+                 tab['exptime'][tab['filter'] == filt_i.upper()].sum()/1000)
                 else:
                     label = '_'.join(f.split('_')[1:])
             
@@ -997,13 +1009,16 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
             fc = ec = grism_colors[g]
             filt_i = g
             
-            if (filt_i in ['g102', 'g141', 'g800l']) | force_fill:
+            is_grism = filt_i in ['g102', 'g141', 'g800l']
+            is_grism |= 'gr150' in filt_i
+            
+            if is_grism | force_fill:
                 alpha = 0.2
             else:
                 fc = 'None'
                 alpha = 0.2
                 
-            label = '{0:5} {1:>8.1f}'.format(filt_i, tab['exptime'][tab['filter'] == g.upper()].sum()/1000)
+            label = '{0:5} {1:>8.1f}'.format(filt_i.strip(';'), tab['exptime'][tab['filter'] == g.upper()].sum()/1000)
             
             patch = PolygonPatch(grism_patches[g], alpha=alpha, fc=fc, ec=ec,
                                  label=label, zorder=100)
@@ -1195,6 +1210,7 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
     tab['assoc_idx'] = assoc_idx
     
     if False:
+        from mastquery import overlaps
         assoc = 48
         sel = tab['assoc_idx'] == assoc
         tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
@@ -1203,7 +1219,6 @@ def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
     """
     Query ALMA archive around the HST data
     """
-    import os
     import time
     import urllib
     import numpy as np
@@ -1349,7 +1364,6 @@ def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
     """
     Query ALMA archive around the HST data
     """
-    import os
     import time
     import urllib
     import numpy as np
@@ -1729,6 +1743,9 @@ def make_all():
     Make all IRAC queries
     """
     import glob
+    import matplotlib.pyplot as plt
+    from mastquery import overlaps
+    
     files = glob.glob('*footprint.fits')
     files.sort()
     plt.ioff()
@@ -1764,6 +1781,7 @@ def make_all():
     plt.ion()
     
     if False:
+        import os
         import numpy as np
         import matplotlib.pyplot as plt                                                                                                         
         from mastquery.overlaps import spitzer_query

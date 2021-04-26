@@ -439,6 +439,7 @@ def add_postcard(table, resolution=256):
    return True
    
    if False:
+       import grizli.utils
        tab = grizli.utils.GTable(table)
        tab['observation_id','filter','orientat','postcard'][tab['visit'] == 1].write_sortable_html('tab.html', replace_braces=True, localhost=True, max_lines=10000, table_id=None, table_class='display compact', css=None)
 
@@ -475,7 +476,7 @@ def parse_polygons(polystr):
         
         
         try:
-            poly_i = np.cast[float](spl[ip:]).reshape((-1,2)) #[np.cast[float](p.split()).reshape((-1,2)) for p in spl]
+            poly_i = np.cast[float](spl[ip:]).reshape((-1,2))
         except:
             # Circle
             x0, y0, r0 = np.cast[float](spl[ip:])
@@ -491,8 +492,10 @@ def parse_polygons(polystr):
         
     return poly
 
+TARGET_BUFFER = 16.
+DEBUG = False
 
-def instrument_polygon(tab_row, bad_area=0.3):
+def instrument_polygon(tab_row, min_poly_area=0.01, bad_area=0.3):
     """
     Fix for bad footprints in MAST tables, perhaps from bad a posteriori 
     alignment
@@ -501,7 +504,7 @@ def instrument_polygon(tab_row, bad_area=0.3):
     import shapely.affinity
 
     pt = Point(tab_row['ra'], tab_row['dec'])
-    pt_buff = pt.buffer(16./60)
+    pt_buff = pt.buffer(TARGET_BUFFER/60)
     
     # Expected area, neglects subarrays
     if tab_row['instrument_name'] in utils.INSTRUMENT_AREAS:
@@ -527,9 +530,14 @@ def instrument_polygon(tab_row, bad_area=0.3):
         try:
             psh = Polygon(pi).buffer(0.01/60)
         except:
+            if DEBUG:
+                print('xx polygon failed')
             continue
         
-        if psh.intersection(pt_buff).area < 0.01/3600:
+        min_size = np.minimum(min_poly_area, 0.9*area)
+        if psh.intersection(pt_buff).area < min_size/3600:
+            if DEBUG:
+                print('xx too small',  psh.intersection(pt_buff).area, min_size/3600.)
             continue
         else:
             keep_poly.append(pi)
@@ -546,10 +554,14 @@ def instrument_polygon(tab_row, bad_area=0.3):
     # (a posteriori alignment problems?)
     IS_BAD = False
     if pshape is None:
+        if DEBUG:
+            print('xx pshape is None')
         print(msg)
         IS_BAD = True
     else:
         if pshape.area < bad_area*area/3600:
+            if DEBUG:
+                print('xx', pshape.area, bad_area, bad_area*area/3600)
             print(msg)
             IS_BAD = True
     
@@ -674,7 +686,7 @@ def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486
     
     return orientat
     
-def show_footprints(tab, ax=None, alpha=0.1):
+def show_footprints(tab, ax=None, alpha=0.1, bad_area=0.3):
     """
     Show pointing footprints in a plot
     """
@@ -697,7 +709,7 @@ def show_footprints(tab, ax=None, alpha=0.1):
         
     for i in range(len(tab)):
         #poly = parse_polygons(tab['footprint'][i])#[0]
-        pshape, is_bad, poly = instrument_polygon(tab[i])
+        pshape, is_bad, poly = instrument_polygon(tab[i], bad_area=bad_area)
             
         for p in poly:
             pclose = np.vstack([p, p[0,:]]) # repeat the first vertex to close
