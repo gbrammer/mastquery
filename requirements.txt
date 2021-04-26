@@ -6,3 +6,4 @@ geos >= 0.2.1
 shapely >= 1.5.16
 matplotlib >= 2.0.2
 descartes >= 1.0.2
+pyyaml
