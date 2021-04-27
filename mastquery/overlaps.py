@@ -37,7 +37,8 @@ def test():
     # MACS 0454
     box = [73.5462181, -3.0147200, 3]
     tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
-    
+
+
 def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     """
     """
@@ -109,7 +110,8 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     
     #np.save('overlaps.npy', [match_poly, match_ids])
     return match_poly, match_ids
-    
+
+
 def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False, min_radius=2, bad_area=0.3):
     """
     Compute discrete groups from the parent table and find overlapping
@@ -562,7 +564,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         tables.append(xtab)
     
     return tables
-    
+
+
 def summary_table(tabs=None, output='overlap_summary'):
     import glob
     from collections import OrderedDict
@@ -650,7 +653,8 @@ def summary_table(tabs=None, output='overlap_summary'):
         return gtab
     else:
         return mtab
-                
+
+
 def parse_overlap_table(tab):
     """
     Compute properties of the overlap table
@@ -762,7 +766,9 @@ def parse_overlap_table(tab):
 
     return names, properties
 
+
 ASSOC_ARGS = {'max_pa':2, 'max_sep':0.5, 'max_time':1.e4/86400., 'match_filter':True, 'match_instrument':True, 'match_program':True, 'hack_grism_pa':True, 'parse_for_grisms':True}
+
 
 def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS, make_figure=True, xsize=6, nlabel=3, assoc_min=0, fill_grism=True, force_fill=False):
     """
@@ -850,7 +856,8 @@ def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS,
         return polys, fig
     else:
         return polys
-    
+
+
 def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True, force_fill=False):
     """Make a figure to show associations
     
@@ -1062,7 +1069,8 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
     fig.tight_layout(pad=0.2)
     #fig.tight_layout(pad=0.2)
     return fig
-    
+
+
 def draw_axis_labels(ax=None, nlabel=3, format='latex'):
     """
     Draw rounded axis labels in DMS format
@@ -1106,7 +1114,8 @@ def draw_axis_labels(ax=None, nlabel=3, format='latex'):
     
     ax.set_xticklabels([t.to_string(u.hourangle, pad=True, fields=2+((xmaj < 60)), precision=0, format=format) for i, t in enumerate(xcoo)])
     ax.set_yticklabels([t.to_string(u.deg, pad=True, fields=2+(ymaj < 1), format=format) for t in ycoo])
-    
+
+
 def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
     """
     Associate visits by filter + position + PA + date
@@ -1215,9 +1224,10 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
         sel = tab['assoc_idx'] == assoc
         tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
 
+
 def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r', rerun_query=True, query_kwargs={'public':False, 'science':False, 'get_html_version':True}):
     """
-    Query ALMA archive around the HST data
+    Query ESO archive around the HST data
     """
     import time
     import urllib
@@ -1359,6 +1369,7 @@ def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
         fig = None
         
     return res, fig
+
 
 def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r', rerun_query=True, query_kwargs={'public':False, 'science':False, 'get_html_version':True}):
     """
@@ -1737,6 +1748,7 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
         ipac.write('{0}_ipac.fits'.format(meta['NAME']), overwrite=True)
     
     return ipac, fig
+
 
 def make_all():
     """

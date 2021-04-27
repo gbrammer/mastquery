@@ -2,6 +2,8 @@
 Fetch data directly from ESA Hubble Science Archive
 """
 
+import os
+
 # DEFAULT_PRODUCTS = {'WFC3-IR':['RAW'],
 #                     'WFPC2':['C0M','C1M'],
 #                     'ACS-WFC':['FLC'],
@@ -12,7 +14,8 @@ DEFAULT_PRODUCTS = {'WFC3/IR':['RAW'],
                     'WFPC2/PC':['C0M','C1M'],
                     'ACS/WFC':['FLC'],
                     'WFC3/UVIS':['FLC']}
-                                        
+
+
 def make_curl_script(table, level=None, script_name=None, inst_products=DEFAULT_PRODUCTS, skip_existing=True, s3_sync=False, output_path='./'):
     """
     Generate a "curl" script to fetch products from the ESA HSA
@@ -102,6 +105,7 @@ def make_curl_script(table, level=None, script_name=None, inst_products=DEFAULT_
     
     return curl_list
 
+
 def make_s3_command(dataset, product, output_path='./', s3_sync=True):
     """
     Generate a path to the public "STPUBDATA" S3 Hubble data mirror
@@ -141,7 +145,8 @@ def make_s3_command(dataset, product, output_path='./', s3_sync=True):
         cmd = 'aws s3 sync --request-payer requester --exclude="*.*" --include="*{3}.fits" {0}{1}/{2}/ {4}/'.format(BASE_URL, dataset[:4].lower(), dataset.lower(), product.lower(), output_path)
     
     return cmd
-    
+
+
 def persistence_products(tab):
     import numpy as np
     try:
@@ -167,6 +172,7 @@ def persistence_products(tab):
 
     return persist_files
     
+
 ### Direct download from MAST
 # https://mast.stsci.edu/api/v0/pyex.html#downloadReq
 def directDownload(tab, inst_products=DEFAULT_PRODUCTS, path='./', skip_existing=True):
@@ -231,7 +237,7 @@ def directDownload(tab, inst_products=DEFAULT_PRODUCTS, path='./', skip_existing
 
     conn.close()
 
-import os
+
 def fetch_wfpc2_calib(file='g6q1912hu_r4f.fits', path=os.getenv('uref')):
     from stsci.tools import convertwaiveredfits
     try: # Python 3.x

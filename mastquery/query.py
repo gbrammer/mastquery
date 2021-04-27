@@ -29,6 +29,11 @@ MASTER_COLORS = {'G102':'#1f77b4',
 # Wide-field instruments
 ALL_INSTRUMENTS = ['WFC3/IR','WFC3/UVIS','ACS/HRC','ACS/WFC','WFPC2/PC','WFPC2/WFC']
 
+# JWST instruments
+JWST_IMAGING = ['NIRCAM/IMAGE', 'NIRISS/IMAGE', 'MIRI/IMAGE', 'NIRCAM/GRISM']
+MIRI_SPECTRA = ['MIRI/IFU', 'MIRI/SLIT', 'MIRI/SLITLESS'] 
+NIRSPEC_SPECTRA = ['NIRSPEC/IFU', 'NIRSPEC/MSA', 'NIRSPEC/SLIT']
+
 DEFAULT_RENAME = {'t_exptime':'exptime',
                   'target_name':'target',
                   's_region':'footprint', 
@@ -73,6 +78,7 @@ INSTRUMENT_DETECTORS = {'WFC3/UVIS':'UVIS',
                         'STIS/NUV':'NUV-MAMA', 
                         'STIS/ACQ':'CCD'}
 
+
 def get_correct_exposure_times(tab, in_place=True, ni=200):
     # Split into smaller groups
     #ni = 200
@@ -84,10 +90,12 @@ def get_correct_exposure_times(tab, in_place=True, ni=200):
         tab['exptime'].format = '.1f'
     else:
         return np.hstack(exptime)
-            
+
+
 def _get_correct_exposure_times(tab, in_place=True):
     """
-    Query direct from mast
+    Query direct from MAST http where association exposure times appear to be
+    more reliable than ``t_exptime`` in the database.
     """
     import os
     import time
@@ -379,7 +387,9 @@ def run_query_old(box=None, proposal_id=[13871], instruments=['WFC3/IR'], filter
 
 def modify_table(tab, get_exptime=True, rename_columns=DEFAULT_RENAME, 
                  sort_column=['obs_id', 'filter']):
-    
+    """
+    Rename columns and resort
+    """
     # Add coordinate name
     if 'ra' in tab.colnames:
         jtargname = [utils.radec_to_targname(ra=tab['ra'][i], dec=tab['dec'][i], round_arcsec=(4, 60), targstr='j{rah}{ram}{ras}{sign}{ded}{dem}') for i in range(len(tab))]
@@ -419,6 +429,9 @@ def modify_table(tab, get_exptime=True, rename_columns=DEFAULT_RENAME,
 
 
 def fix_byte_columns(tab):
+    """
+    Change byte columns to str
+    """
     for col in tab.colnames:
         try:
             if tab[col].dtype == np.dtype('O'):
@@ -427,7 +440,7 @@ def fix_byte_columns(tab):
                 tab[col] = strcol
         except:
             pass
-            
+
 
 def add_postcard(table, resolution=256):
     
@@ -443,6 +456,7 @@ def add_postcard(table, resolution=256):
        tab = grizli.utils.GTable(table)
        tab['observation_id','filter','orientat','postcard'][tab['visit'] == 1].write_sortable_html('tab.html', replace_braces=True, localhost=True, max_lines=10000, table_id=None, table_class='display compact', css=None)
 
+
 NCIRCLE = 36
 THETA = np.linspace(0, 2*np.pi, NCIRCLE) 
 XCIRCLE = np.cos(THETA)
@@ -450,6 +464,9 @@ YCIRCLE = np.sin(THETA)
 
 
 def parse_polygons(polystr):
+    """
+    Parse ``s_region`` strings to arrays
+    """
     from astropy.coordinates import Angle
     import astropy.units as u
     
@@ -474,7 +491,6 @@ def parse_polygons(polystr):
             except:
                 continue
         
-        
         try:
             poly_i = np.cast[float](spl[ip:]).reshape((-1,2))
         except:
@@ -491,6 +507,7 @@ def parse_polygons(polystr):
         poly.append(poly_i)
         
     return poly
+
 
 TARGET_BUFFER = 16.
 DEBUG = False
@@ -574,7 +591,7 @@ def instrument_polygon(tab_row, min_poly_area=0.01, bad_area=0.3):
         keep_poly = [np.array(pshape.boundary.xy).T]
         
     return pshape, IS_BAD, keep_poly
-    
+
 
 def set_default_formats(table, formats=DEFAULT_COLUMN_FORMAT):
     """
@@ -590,7 +607,7 @@ def set_expstart(table):
     from astropy import time
     mjd = time.Time(table['t_min'], format='mjd')
     table['expstart'] = mjd.iso
-    
+
 
 def set_transformed_coordinates(table):
     """
@@ -646,7 +663,8 @@ def get_footprint_area(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.
     cosd = np.cos(px[0,1]/180*np.pi)
     area = poly.area*3600*cosd
     return area
-    
+
+
 def set_orientat_column(table):
     """
     Make a column in the `table` computing each orientation with
@@ -654,10 +672,10 @@ def set_orientat_column(table):
     """
     table['orientat'] = [get_orientat(p) for p in table['footprint']]
     table['orientat'].format = '.1f'
-    
+
+
 def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486 127.423118 18.887458 127.463833 18.889591'):
     """
-    
     Compute the "ORIENTAT" position angle (PA of the detector +y axis) from  
     the archive footprint, assuming that the first two entries of the polygon 
     are the LL and UL corners of the detector.
@@ -685,7 +703,8 @@ def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486
     orientat = Angle.wrap_at(orientat*u.deg, 180*u.deg).value
     
     return orientat
-    
+
+
 def show_footprints(tab, ax=None, alpha=0.1, bad_area=0.3):
     """
     Show pointing footprints in a plot
@@ -723,7 +742,8 @@ def show_footprints(tab, ax=None, alpha=0.1, bad_area=0.3):
                        color=colors[tab['filter'][i]], alpha=alpha)
     
     return colors
-    
+
+
 def add_aladdin(tab, rd_cols=['ra', 'dec'], fov=0.5, size=(400,200), default_view="P/DSS2/color"):
     """
     Add AladinLite DIV column to the table
