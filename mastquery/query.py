@@ -700,8 +700,11 @@ def get_orientat(polystr='Polygon ICRS 127.465487 18.855605 127.425760 18.853486
     orientat = 90+np.arctan2(dra, dde)/np.pi*180
     orientat -= 0.24 # small offset to better match header keywords
     
-    orientat = Angle.wrap_at(orientat*u.deg, 180*u.deg).value
-    
+    try:
+        orientat = Angle.wrap_at(orientat*u.deg, 180*u.deg).value
+    except AttributeError:
+        orientat = Angle(orientat*u.deg).wrap_at(180*u.deg).value
+        
     return orientat
 
 
