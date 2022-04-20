@@ -173,7 +173,7 @@ def mastJson2Table(jsonObj):
             atype="str"
         if atype=="boolean":
             atype="bool"
-        dataTable[col] = np.array([x.get(col,None) for x in jsonObj['data']],dtype=atype)
+        dataTable[col] = np.array([x.get(col,None) for x in jsonObj['data']])
         
     return dataTable
 ###############
