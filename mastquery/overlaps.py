@@ -1746,7 +1746,9 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
         fig.tight_layout(pad=0.2)
         fig.savefig('{0}_ipac.png'.format(meta['NAME']))
         ipac.write('{0}_ipac.fits'.format(meta['NAME']), overwrite=True)
-    
+    else:
+        fig = None
+        
     return ipac, fig
 
 
