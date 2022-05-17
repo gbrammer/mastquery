@@ -26,7 +26,7 @@ INSTRUMENT_AREAS = {'WFC3/IR':4.5,
                     'MIRI/IFU':0.0037, 
                     'MIRI':2.8, # Todo - parse mode e.g IFU
                     'NIRISS':5.8, 
-                    'NIRCAM':4.8
+                    'NIRCAM':4.8,
                     'NIRSPEC':12}
 
 # character to skip clearing line on STDOUT printing
