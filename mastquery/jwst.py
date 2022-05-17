@@ -62,7 +62,7 @@ DEFAULT_COLUMNS = {
          'pi_name', 'program', 'title',
          'targname', 'prop_ra', 'prop_dec',
          'patttype', 'patt_num', 'pattsize',
-         'pridtype', 'pridtpts', 'subpxpat', 'subpxpts',
+         'pridtpts', 'subpxpts',
          'xoffset', 'yoffset',
          's_region', 'crowdfld', 'pcs_mode', 'expripar',
          'publicReleaseDate_mjd as ReleaseDate',
@@ -95,7 +95,7 @@ DEFAULT_COLUMNS = {
          'pi_name', 'program', 'title',
          'targname', 'prop_ra', 'prop_dec', 
          'patttype', 'patt_num', 'pattsize',
-         'pridtype', 'pridtpts', 'subpxpat', 'subpxpts',
+         'pridtpts', 'subpxpts',
          'xoffset', 'yoffset',
          'dithdirc', 'dithopfr', 'dithpnts',
          's_region', 'crowdfld', 'pcs_mode', 'expripar', 
@@ -114,7 +114,7 @@ DEFAULT_COLUMNS = {
          'pi_name', 'program', 'title',
          'targname', 'prop_ra', 'prop_dec', 
          'patttype', 'patt_num', 'pattsize',
-         'pridtype', 'pridtpts', 'subpxpat', 'subpxpts', 'nod_type', 
+         'pridtpts', 'subpxpat', 'subpxpts', 'nod_type', 
          'xoffset', 'yoffset',
          's_region', 'crowdfld', 'pcs_mode', 'expripar', 
          'publicReleaseDate_mjd as ReleaseDate',
@@ -152,11 +152,107 @@ FULL_SUBARRAY = [{'paramName': 'subarray', 'values': ['FULL']}]
 
 FINE_GUIDE = [{'paramName': 'pcs_mode', 'values': ['FINEGUIDE']}]
 
+
+def make_query_filter(column='filters', values=['F200W'], text=None, range=None):
+    """
+    Generate a query filter for the MAST API
+    
+    
+    """
+    filt = {'paramName': column}
+    if text is not None:
+        filt['freeText'] = text
+        filt['values'] = []
+    elif range is not None:
+        filt['values'] = [{'min':range[0], 'max':range[1]}]
+    else:
+        filt['values'] = values
+    
+    return [filt]
+    
+    
 def programs(progs):
     """
     Helper for generating a filter on a list of program ids
     """
-    return [{'paramName': 'program', 'values': [f'{int(p)}' for p in progs]}]
+    return make_query_filter(column='program', 
+                        values=[f'{int(p)}' for p in progs])
+
+
+def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None, **kwargs):
+    """
+    Combine all instruments
+    """                        
+    import astropy.table
+    
+    res = []
+    for inst in instruments:
+        ri = query_jwst(instrument=inst, columns=columns, **kwargs)
+        if len(ri) > 0:
+            res.append(ri)
+    
+    if len(res) == 0:
+        return None
+        
+    for t in res:
+        empty = []
+        for c in t.colnames:
+            if t[c].dtype in [object]:
+                fill = np.in1d(t[c], [None])
+                if fill.sum() == len(t):
+                    empty.append(c)
+                    continue
+                
+                t[c][fill] = t[c][~fill][0]*0
+                t[c] = np.ma.masked_array(t[c], mask=fill,
+                                  dtype=t[c][~fill][0].__class__)
+
+            if hasattr(t[c], 'mask'):
+                if t[c].mask.sum() == len(t):
+                    empty.append(c)
+                
+        t.remove_columns(empty)
+    
+    full = astropy.table.vstack(res)
+    
+    if rd is not None:
+        from grizli import utils
+        from shapely.geometry import Point
+        
+        if len(rd) == 2:
+            # Contains point
+            pt = Point(*rd)
+            
+            tab = utils.GTable()
+            tab['ra'], tab['dec'] = [rd[0]], [rd[1]]
+            idx, dr = tab.match_to_catalog_sky(full, 
+                                         other_radec=('prop_ra', 'prop_dec'))
+            
+            sel = dr.value < 60*20
+            ix = np.where(sel)[0]
+            for i in ix:
+                fp = full['s_region'][i]
+                try:
+                    sr = utils.SRegion(fp)
+                    sel[i] = sr.shapely[0].contains(pt)
+                except ValueError:
+                    #print('err', fp)
+                    sel[i] = False
+            
+            sel = np.array(sel)
+            
+        else:
+            # Separation in arcmin
+            tab = utils.GTable()
+            tab['ra'], tab['dec'] = [rd[0]], [rd[1]]
+            idx, dr = tab.match_to_catalog_sky(full, 
+                                         other_radec=('prop_ra', 'prop_dec'))
+            
+            sel = dr.value < rd[2]*60
+        
+        full = full[sel]
+    
+    return full
 
 
 def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal']):
