@@ -235,14 +235,15 @@ def new_mastJson2Table(query_content):
     Convert json query content to table
     """
     import json
-
+    from astropy.table import Table
+    
     json_data = json.loads(query_content)
     #print('xxx', json_data.keys())
     
     tabs = []
     for jdata in json_data['Tables']:
         cols = [c['name'] for c in jdata['Fields']]
-        tab = utils.GTable(names=cols, rows=jdata['Rows'])
+        tab = Table(names=cols, rows=jdata['Rows'])
         tabs.append(tab)
     
     if len(tabs) == 1:

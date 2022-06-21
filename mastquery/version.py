@@ -1,4 +1,4 @@
 # git describe --tags
-__version__ = "1.1.dev16"
-__long_version__ = "1.1-16-g9813332"
-__version_hash__ = "g9813332"
+__version__ = "1.1.dev17"
+__long_version__ = "1.1-17-g9bed5ef"
+__version_hash__ = "g9bed5ef"
