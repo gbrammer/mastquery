@@ -17,7 +17,7 @@ ALL_COLUMNS = ['ArchiveFileID', 'filename', 'fileSetName', 'productLevel',
                'date_obs_mjd', 'detector', 'drpfrms1', 'drpfrms3', 'duration',
                'effexptm', 'effinttm', 'eng_qual', 'exp_type', 'expcount',
                'expend', 'expmid', 'exposure', 'expripar', 'expstart',
-               'fastaxis', 'filetype', 'filter', 'frmdivsr', 'gdstarid',
+               'fastaxis', 'filter', 'frmdivsr', 'gdstarid',
                'groupgap', 'gs_dec', 'gs_mag', 'gs_order', 'gs_ra',
                'gsendtim', 'gsendtim_mjd', 'gsstrttm', 'gsstrttm_mjd',
                'gs_udec', 'gs_umag', 'gs_ura', 'helidelt', 'hendtime',
@@ -54,7 +54,7 @@ DEFAULT_COLUMNS = {
   'NIS':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure','filetype',
+         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
          'telescop', 'instrume', 'detector', 'subarray',
          'filter', 'pupil', 'fwcpos', 'pwcpos', 'lamp',
          'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
@@ -70,7 +70,7 @@ DEFAULT_COLUMNS = {
   'NRC':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure','filetype',
+         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
          'telescop', 'instrume', 'module', 'channel', 'detector', 'subarray',
          'filter','pupil', 'lamp',
          'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
@@ -86,7 +86,7 @@ DEFAULT_COLUMNS = {
   'MIR':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure','filetype',
+         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
          'telescop', 'instrume', 'channel', 'band', 'detector', 'subarray',
          'filter', 'lamp',
          'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
@@ -104,7 +104,7 @@ DEFAULT_COLUMNS = {
   'NRS':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure','filetype',
+         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
          'telescop', 'instrume', 'detector', 'subarray',
          'nrs_norm', 'nrs_ref', 
          'filter', 'fxd_slit', 'grating', 'lamp',
@@ -124,7 +124,7 @@ DEFAULT_COLUMNS = {
 REQUEST = {'service': 'Mast.Jwst.Filtered.Niriss',
                 'params': {'columns': '*', 'filters': []},
                 'format': 'json',
-                'pagesize': 50000}
+                'pagesize': 100000}
                 
 SERVICES = {'NIS':'Mast.Jwst.Filtered.Niriss', 
             'NRC':'Mast.Jwst.Filtered.Nircam',
@@ -133,8 +133,8 @@ SERVICES = {'NIS':'Mast.Jwst.Filtered.Niriss',
 
 FILTER_EXAMPLES = [{'paramName':
                     'productLevel', 'values': ['2a','2b']},
-                   {'paramName': 'filetype', 
-                    'values': ['countrate','calibrated']},
+                   # {'paramName': 'filetype', 
+                   #  'values': ['countrate','calibrated']},
                    {'paramName': 'program', 'values': ['1076']},
                    {'paramName': 'expstart', 
                     'values': [{"min":59672.0, "max":59690.}]},
@@ -144,8 +144,10 @@ FILTER_EXAMPLES = [{'paramName':
 
 CALIB_FILTERS = [{'paramName':
                     'productLevel', 'values': ['2a','2b']},
-                 {'paramName': 'filetype', 
-                    'values': ['countrate','calibrated']},
+                 # {'paramName': 'filetype', 
+                 #    'values': ['countrate','calibrated']},
+                 {'paramName': 'filename', 'values': [],
+                    'freeText':"%_[cr]a%[le].fits"}
                    ]
 
 FULL_SUBARRAY = [{'paramName': 'subarray', 'values': ['FULL']}]
@@ -263,6 +265,7 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     import astropy.time
     
     from mastquery.utils import mastQuery, mastJson2Table
+    from mastquery.utils import new_mastJson2Table, new_mast_query
         
     if recent_days is not None:
         now = astropy.time.Time.now().mjd
@@ -283,12 +286,21 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     for k in extra:
         request[k] = extra[k]
     
-    head, content = mastQuery(request)
-    json_data = json.loads(content)
-    if json_data['status'] == 'ERROR':
-        raise ValueError(json_data['msg'])
+    try:
+        print('request =', request)
+        head, content = new_mast_query(request)
+    except:
+        head, content = mastQuery(request)
+    
+    try:
+        tab = new_mastJson2Table(content)
+    except KeyError:
+        json_data = json.loads(content)
+        if json_data['status'] == 'ERROR':
+            raise ValueError(json_data['msg'])
         
-    tab = mastJson2Table(json_data)
+        tab = mastJson2Table(json_data)
+        
     if 'filename' in tab.colnames:
         so = np.argsort(tab['filename'])
         tab = tab[so]
@@ -308,7 +320,11 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     if (recent_days is not None) & ('expstart' in tab.colnames):
         tab['dt'] = now - tab['expstart']
         tab['dt'].format = '.2f'
-        
+    
+    if ('program' in tab.colnames) & ('pi_name' in tab.colnames):
+        tab['prog_pi'] = [f'{prog} {pi}'
+                          for prog, pi in zip(tab['program'], tab['pi_name'])]
+                          
     return tab
 
 

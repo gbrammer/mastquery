@@ -180,6 +180,141 @@ def mastJson2Table(jsonObj):
         dataTable[col] = np.array([x.get(col,None) for x in jsonObj['data']])
         
     return dataTable
+
+
+def new_mast_query(request):
+    """Perform a MAST query
+    
+    From https://mast.stsci.edu/api/v0/MastApiTutorial.html
+    
+    Parameters
+    ----------
+    request : dict
+        The MAST request json object
+
+    Returns
+    -------
+    head : str
+        Response HTTP header
+    
+    content : str
+        Returned data
+    """
+    import sys
+    import json
+    import requests
+    from urllib.parse import quote as urlencode
+    
+    # Base API url
+    request_url='https://mast.stsci.edu/api/v0/invoke'    
+    
+    # Grab Python Version 
+    version = ".".join(map(str, sys.version_info[:3]))
+
+    # Create Http Header Variables
+    headers = {"Content-type": "application/x-www-form-urlencoded",
+               "Accept": "text/plain",
+               "User-agent":"python-requests/"+version}
+
+    # Encoding the request as a json string
+    req_string = json.dumps(request)
+    req_string = urlencode(req_string)
+    
+    # Perform the HTTP request
+    resp = requests.post(request_url, data="request="+req_string, headers=headers)
+    
+    # Pull out the headers and response content
+    head = resp.headers
+    content = resp.content.decode('utf-8')
+
+    return head, content
+
+
+def new_mastJson2Table(query_content):
+    """
+    Convert json query content to table
+    """
+    import json
+
+    json_data = json.loads(query_content)
+    #print('xxx', json_data.keys())
+    
+    tabs = []
+    for jdata in json_data['Tables']:
+        cols = [c['name'] for c in jdata['Fields']]
+        tab = utils.GTable(names=cols, rows=jdata['Rows'])
+        tabs.append(tab)
+    
+    if len(tabs) == 1:
+        return tabs[0]
+    else:
+        return tabs
+
+
+def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_size=1):
+    """
+    Download files from MAST API
+    
+    Parameters
+    ----------
+    tab : table
+        Table from MAST API query with minimal columns ``filename``, 
+        ``dataURI``.
+    
+    out_path : str
+        Output path
+    
+    verbose : bool
+        Print status messages
+    
+    overwrite : bool
+        Overwrite existing files
+    
+    min_size : float
+        Minimum size in megabits to check if the downloaded file is rather
+        an `Access Denied` file
+        
+    """
+    import requests
+    import os
+    
+    download_url = 'https://mast.stsci.edu/api/v0.1/Download/file?'
+    
+    if not os.path.exists(out_path):
+        if verbose:
+            print(f'mkdir {out_path}')
+            os.makedirs(out_path)
+    
+    for row in tab:     
+
+        out_file = os.path.join(out_path, os.path.basename(row['filename']))
+        
+        if os.path.exists(out_file) & (not overwrite):
+            if verbose:
+                print(f'{out_file} exists')
+                continue
+                
+        # Download the data
+        payload = {"uri":row['dataURI']}
+        resp = requests.get(download_url, params=payload)
+
+        # save to file
+        with open(out_file,'wb') as FLE:
+            FLE.write(resp.content)
+        
+        # check for file 
+        if not os.path.isfile(out_file):
+            if verbose:
+                print("ERROR: " + out_file + " failed to download.")
+        else:
+            fs = os.path.getsize(out_file)/1e6
+            if fs < min_size:
+                print(f"WARNING: {out_file} is {fs:.1} Mb so is probably 'Access Denied'")
+            else:
+                if verbose:
+                    print("COMPLETE: ", out_file)
+        
+
 ###############
 
 def table_from_info(info):
