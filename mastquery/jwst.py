@@ -324,7 +324,11 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     if ('program' in tab.colnames) & ('pi_name' in tab.colnames):
         tab['prog_pi'] = [f'{prog} {pi}'
                           for prog, pi in zip(tab['program'], tab['pi_name'])]
-                          
+    
+    if ('filter' in tab.colnames) & ('pupil' in tab.colnames):
+        tab['filter-pupil'] = [f'{f}-{p}'.replace('---','')
+                               for f, p in zip(tab['filter'], tab['pupil'])]
+        
     return tab
 
 
