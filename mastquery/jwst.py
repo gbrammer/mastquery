@@ -66,7 +66,7 @@ DEFAULT_COLUMNS = {
          'xoffset', 'yoffset',
          's_region', 'crowdfld', 'pcs_mode', 'expripar',
          'publicReleaseDate_mjd as ReleaseDate',
-         'FileSetId', 'dataURI'],
+         'FileSetId', 'dataURI','fileSize'],
   'NRC':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
@@ -82,7 +82,7 @@ DEFAULT_COLUMNS = {
          'xoffset', 'yoffset',
          's_region', 'crowdfld', 'pcs_mode', 'expripar', 
          'publicReleaseDate_mjd as ReleaseDate',
-         'FileSetId', 'dataURI'],
+         'FileSetId', 'dataURI','fileSize'],
   'MIR':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
@@ -100,7 +100,7 @@ DEFAULT_COLUMNS = {
          'dithdirc', 'dithopfr', 'dithpnts',
          's_region', 'crowdfld', 'pcs_mode', 'expripar', 
          'publicReleaseDate_mjd as ReleaseDate',
-         'FileSetId', 'dataURI'],
+         'FileSetId', 'dataURI','fileSize'],
   'NRS':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
          'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
          'gs_v3_pa', 'pps_aper', 'template',
@@ -118,7 +118,7 @@ DEFAULT_COLUMNS = {
          'xoffset', 'yoffset',
          's_region', 'crowdfld', 'pcs_mode', 'expripar', 
          'publicReleaseDate_mjd as ReleaseDate',
-         'FileSetId', 'dataURI'],
+         'FileSetId', 'dataURI','fileSize'],
 }
 
 REQUEST = {'service': 'Mast.Jwst.Filtered.Niriss',
@@ -257,6 +257,159 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
     return full
 
 
+def fix_jwst_sregions(res):
+    """
+    Fix s_region polygons based on pointing keywords, mostly for MIRIM_FULL
+    """
+    from tqdm import tqdm
+    import pysiaf
+    from sregion import SRegion
+
+    siaf = {}
+    for ins in ['MIRI','NIRISS','NIRCAM','NIRSPEC']:
+        siaf[ins] = pysiaf.Siaf(ins)
+
+    s_region = []
+    
+    res['orig_s_region'] = res['s_region']
+    
+    for i in tqdm(range(len(res))):
+        if not res['xoffset'][i]:
+            s_region.append(res['s_region'][i])
+            continue
+
+        aper_name = res['apername'][i]
+        dx, dy = 0., 0.
+
+        ap_ref = siaf[res['instrume'][i]].apertures[res['pps_aper'][i]]
+
+        if aper_name == 'MIRIM_FULL':
+            apers = ['MIRIM_ILLUM','MIRIM_CORONLYOT']
+        else:
+            apers = [aper_name]
+
+        sreg = []
+
+        for aper_i in apers:
+            ap = siaf[res['instrume'][i]].apertures[aper_i]
+
+            idl = np.array(ap.corners('idl', rederive=False)).T
+            idl += np.array([-res['xoffset'][i], -res['yoffset'][i]])
+            asec = np.array(ap.idl_to_tel(*idl.T)).T
+            asec -= np.array([ap_ref.V2Ref, ap_ref.V3Ref])
+
+            theta = np.deg2rad(res['gs_v3_pa'][i] + 0)
+            _mat = np.array([[np.cos(theta), -np.sin(theta)],
+                             [np.sin(theta), np.cos(theta)]])
+
+            arot = asec.dot(_mat)[::-1,:]
+
+            cosd = np.array([np.cos(res['targ_dec'][i]/180*np.pi), 1])
+
+            asky = arot / 3600. / cosd 
+            asky += np.array([res['targ_ra'][i], res['targ_dec'][i]])
+
+            sr = SRegion(asky)
+            sreg.append(sr.s_region)
+
+        s_region.append(' '.join(sreg)) #sr.s_region
+
+    res['s_region'] = s_region
+
+
+def set_missing_footprints(res):
+    """
+    Set missing s_region entries, mostly NIRISS
+    """
+    from sregion import SRegion
+    
+    # Set Grism footprints
+    sprev = {}
+
+    for i, sn in enumerate(res['s_region']):
+        try:
+            sr = SRegion(sn)
+            sprev[res['instrume'][i]] = sn
+        except:
+            test = 'GR' in res['filter'][i]
+            if 'pupil' in res.colnames:
+                test |= ('GR' in res['pupil'][i])
+
+            if test:
+                #use previous footprint for GRISM
+                res[i]['s_region'] = sprev[res['instrume'][i]]
+                pass
+
+    # Set RA/Dec to footprint centroid
+    res['ra'] = 0.
+    res['dec'] = 0.
+
+    for i, s in enumerate(res['s_region']):
+        sr = SRegion(s)
+        res['ra'][i], res['dec'][i] = sr.centroid[0]
+
+
+def match_dataportal_columns(res):
+    """
+    Match some columns in the jwst query to the output from the dataportal 
+    query
+    """
+    
+    # Fill columns with single value
+    fill_cols = {'obs_collection':'JWST',
+                 'wavelength_region':'IR', 
+                 'project':'JWST',
+                 'provenance_name':'CAOM'}
+
+    for c in fill_cols:
+        if c in res.colnames:
+            #print(c)
+            res.remove_column(c)
+
+        res[c] = fill_cols[c]
+    
+    # Translate columns
+    col_translate = {'targname':'target', 
+                     'filter-pupil':'filter',
+                     'pi_name': 'proposal_pi',
+                     'program': 'proposal_id',
+                     'instrume': 'instrument_name', 
+                     's_region': 'footprint',
+                     'expstart':'t_min',
+                     'expend':'t_max',
+                     'effexptm':'exptime',
+                     'dataURI':'dataURL',
+                     'title':'obs_title',
+                     'publicReleaseDate_mjd':'t_obs_release',
+                     'category':'proposal_type'}
+
+    for c in col_translate:
+        if c in res.colnames:
+            res[col_translate[c]] = res[c]
+
+    res['orig-filter'] = res['filter']
+
+    res.remove_column('filter')
+    res['filter'] = res['inst-mode']
+
+    for i, (inst, f) in enumerate(zip(res['instrume'], res['filter-pupil'])):
+        f_i = f.replace('-','.').replace('.CLEAR','').replace('CLEAR.','')
+        # Combine grisms and filters for WFSS so that they are
+        # associated together
+        f_i = f_i.replace('GR150R.','').replace('GR150C.','')
+        f_i = f_i.replace('.GRISMR','').replace('.GRISMC','')
+
+        inst_i = {'NIRCAM':'NC', 
+                  'NIRISS':'NS',
+                  'MIRI':'MI',
+                  'NIRSPEC':'NS'}[inst]
+                  
+        if 'GR' in f_i:
+            res['filter'][i] = f'{f_i}'
+        else:
+            res['filter'][i] = f'{inst_i}.{f_i}'
+
+
 def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal']):
     """
     Query 
@@ -328,6 +481,17 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     if ('filter' in tab.colnames) & ('pupil' in tab.colnames):
         tab['filter-pupil'] = [f'{f}-{p}'.replace('---','')
                                for f, p in zip(tab['filter'], tab['pupil'])]
+        
+        tab['inst-mode'] = [f'{ii}-{f}-{p}'.replace('---','').replace('-CLEAR','')
+                               for ii, f, p in
+                            zip(tab['instrume'], tab['filter'], tab['pupil'])]
+    else:
+        tab['filter-pupil'] = [f'{f}'.replace('---','')
+                               for f in tab['filter']]
+        
+        tab['inst-mode'] = [f'{ii}-{f}'.replace('---','').replace('-CLEAR','')
+                               for ii, f in
+                            zip(tab['instrume'], tab['filter'])]
         
     return tab
 
