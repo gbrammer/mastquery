@@ -12,6 +12,6 @@ def test_jwst_query():
     
     res = jwst.query_all_jwst(filters=filters)
     assert(len(res) > 0)
-    assert(np.abs(len(res)-953) < 10)
+    assert(np.abs(len(res)-953) < 50)
     
     
