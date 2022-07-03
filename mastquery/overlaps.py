@@ -44,15 +44,16 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     """
     import copy
     import numpy as np
+    from tqdm import tqdm
     
     match_poly = [polygons[0]]
     match_ids = [[0]]
     
     # Loop through polygons and combine those that overlap
-    for i in range(1,len(polygons)):
-        if verbose > 1:
-            print(utils.NO_NEWLINE+'Parse {0:4d} (N={1})'.format(i, 
-                                                    len(match_poly)))
+    for i in tqdm(range(1,len(polygons))):
+        # if verbose > 1:
+        #     print(utils.NO_NEWLINE+'Parse {0:4d} (N={1})'.format(i, 
+        #                                             len(match_poly)))
         
         has_match = False
         for j in range(len(match_poly)):
@@ -83,9 +84,9 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
         match_poly = [mpolygons[0]]
         match_ids = [mids[0]]
     
-        for i in range(1,len(mpolygons)):
-            if verbose > 1:
-                print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
+        for i in tqdm(range(1,len(mpolygons))):
+            # if verbose > 1:
+            #     print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
                 
             has_match = False
             for j in range(len(match_poly)):
@@ -187,7 +188,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         use_parent = False
         show_parent = True
     else:
-        print('Parse polygons')
+        #print('Parse polygons')
         poly_query = False
         
         # Fix "CLEAR" filters
@@ -770,7 +771,7 @@ def parse_overlap_table(tab):
 ASSOC_ARGS = {'max_pa':2, 'max_sep':0.5, 'max_time':1.e4/86400., 'match_filter':True, 'match_instrument':True, 'match_program':True, 'hack_grism_pa':True, 'parse_for_grisms':True}
 
 
-def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS, make_figure=True, xsize=6, nlabel=3, assoc_min=0, fill_grism=True, force_fill=False):
+def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS, make_figure=True, xsize=6, nlabel=3, assoc_min=0, fill_grism=True, force_fill=False, **kwargs):
     """
     Split table by groups from `compute_associations`
     
@@ -852,21 +853,38 @@ def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS,
         polys[label] = poly_i
     
     if make_figure:
-        fig = make_association_figure(tab, polys, root=root, xsize=xsize, nlabel=nlabel, fill_grism=fill_grism, force_fill=force_fill)
+        fig = make_association_figure(tab, polys, root=root, xsize=xsize, nlabel=nlabel, fill_grism=fill_grism, force_fill=force_fill, **kwargs)
         return polys, fig
     else:
         return polys
 
+LS_ARGS = dict(pixscale=1,
+               layers=['ls-dr9', 'sdss', 'unwise-neo7'],
+               zorder=-1000,
+               alpha=0.8,
+               aspect='auto',
+               verbose=True,
+               grayscale=False,
+               grayscale_params=[99, 1.5, -0.02])
 
-def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True, force_fill=False):
+def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True, force_fill=False, with_ls_thumbnail=False, ls_args=LS_ARGS, **kwargs):
     """Make a figure to show associations
     
+    with_ls_thumbnail : bool
+        Get a cutout from LegacySurveys
+    
+    ls_args : dict
+        Arguments to 
+        
     """
     import numpy as np
     
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator
     from descartes import PolygonPatch
+    
+    from skimage import io
+    from urllib.error import HTTPError
     
     from astropy import units as u
     from astropy.coordinates import angles
@@ -978,7 +996,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                     fc = c_i
                     zo = 1000
             
-            alpha = 0.4
+            alpha = 0.4**(not with_ls_thumbnail)
             
             if (fill_grism & has_grism) | (force_fill):                
                 #fc = c_i
@@ -988,28 +1006,52 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                     grism_patches[filt_i] = grism_patches[filt_i].union(p.buffer(0.00001))
                 else:
                     grism_patches[filt_i] = p.buffer(0.00001)
-                #
-                patch = PolygonPatch(p, alpha=0.1, fc=fc, ec=c_i,
-                                     label=None, zorder=zo)
+                
+                if hasattr(p, 'geoms'):
+                    piter = p.geoms
+                else:
+                    piter = [p]
+                
+                for pi in piter:
+                    patch = PolygonPatch(pi,
+                                         alpha=0.2**(not with_ls_thumbnail)/2,
+                                         fc=fc, ec=c_i,
+                                         label=None, zorder=zo)
             
-                pat = ax.add_patch(patch)
+                    pat = ax.add_patch(patch)
                 
             else:        
                 if filt_i not in filter_list:
-                    label = '{0:5} {1:>8.1f}'.format(filt_i.strip(';'),
-                 tab['exptime'][tab['filter'] == filt_i.upper()].sum()/1000)
+                    _fmatch = tab['filter'] == filt_i.upper()
+                    _expt = tab['exptime'][_fmatch].sum()/1000
+                    if filt_i.lower().startswith('nc.'):
+                        # NIRCAM chips
+                        if filt_i.lower() < 'nc.f260':
+                            _expt /= 8
+                        else:
+                            _expt /= 2
+                            
+                    label = '{0:5} {1:>8.1f}'.format(filt_i.strip(';'), _expt)
                 else:
                     label = '_'.join(f.split('_')[1:])
-            
-                patch = PolygonPatch(p, alpha=alpha, fc=fc, ec=c_i,
+                
+                if hasattr(p, 'geoms'):
+                    piter = p.geoms
+                else:
+                    piter = [p]
+                
+                for pi in piter:
+                    patch = PolygonPatch(pi, alpha=alpha, fc=fc, ec=c_i,
                                      label=label, zorder=zo)
             
-                pat = ax.add_patch(patch)
+                    pat = ax.add_patch(patch)
                              
                 if filt_i not in filter_list:
                     handles.append(pat)
                     labels.append(label)
                     filter_list.append(filt_i)
+    
+    # print('xxx', grism_patches)
     
     if fill_grism | force_fill:
         for g in grism_patches:
@@ -1020,24 +1062,39 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
             is_grism |= 'gr150' in filt_i
             
             if is_grism | force_fill:
-                alpha = 0.2
+                alpha = 0.2**(not with_ls_thumbnail)
             else:
                 fc = 'None'
-                alpha = 0.2
-                
-            label = '{0:5} {1:>8.1f}'.format(filt_i.strip(';'), tab['exptime'][tab['filter'] == g.upper()].sum()/1000)
+                alpha = 0.2**(not with_ls_thumbnail)
             
-            patch = PolygonPatch(grism_patches[g], alpha=alpha, fc=fc, ec=ec,
+            _expt = tab['exptime'][tab['filter'] == filt_i.upper()].sum()/1000
+            if filt_i.lower().startswith('nc.'):
+                # NIRCAM chips
+                if filt_i.lower() < 'nc.f260':
+                    _expt /= 8
+                else:
+                    _expt /= 2
+            
+            label = '{0:5} {1:>8.1f}'.format(filt_i.strip(';'), _expt)
+            
+            if hasattr(grism_patches[g], 'geoms'):
+                piter = grism_patches[g].geoms
+            else:
+                piter = [grism_patches[g]]
+            
+            for pi in piter:
+                patch = PolygonPatch(pi, alpha=alpha, fc=fc, ec=ec,
                                  label=label, zorder=100)
         
-            pat = ax.add_patch(patch)
+                pat = ax.add_patch(patch)
                          
             if filt_i not in filter_list:
                 handles.append(pat)
                 labels.append(label)
                 filter_list.append(filt_i)
             
-    ax.legend(handles, labels, fontsize=7, ncol=int(np.ceil(len(labels)/5)), loc='upper right')
+    ax.legend(handles, labels, fontsize=7, 
+              ncol=int(np.minimum(len(labels), 4)), loc='upper right')
     
     ax.grid()
 
@@ -1064,11 +1121,159 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
     
     draw_axis_labels(ax=ax, nlabel=nlabel)
     
-    ax.text(0.03, 0.03, time.ctime(), fontsize=5, transform=ax.transAxes, ha='left', va='bottom')
+    ax.text(0.03, 0.03, time.ctime(), fontsize=5,
+            transform=ax.transAxes, ha='left', va='bottom')
     
+    if with_ls_thumbnail:
+        # ls_url = "https://www.legacysurvey.org/viewer/jpeg-cutout?"
+        # ls_url += "ra={ra}&dec={dec}&pixscale={ps}&width={sw}&height={sh}"
+        # ls_url += "&layer={layer}"
+        # 
+        # xl = ax.get_xlim()
+        # yl = ax.get_ylim()
+        # 
+        # if 'pixscale' in ls_args:
+        #     ps = ls_args['pixscale']
+        # else:
+        #     ps = 1
+        # 
+        # if 'layers' in ls_args:
+        #     _layers = ls_args['layers']
+        # else:
+        #     _layers = ['ls-dr9', 'sdss', 'unwise-neo7']
+        #     
+        # dw = np.abs(xl[1]-xl[0])
+        # sw = int(np.round(dw*np.cos(np.mean(yl)/180*np.pi)*3600/ps))
+        # sh = int(np.round((yl[1]-yl[0])*3600/ps))
+        # 
+        # img = None
+        # for layer in _layers:
+        #     url = ls_url.format(ra=np.mean(xl), dec=np.mean(yl),
+        #                         sw=sw, sh=sh, ps=ps, layer=layer)
+        #     try:
+        #         img = io.imread(url)
+        #         print(url)
+        #         break
+        #     except HTTPError:
+        #         continue
+        url, img = insert_legacysurveys_thumbnail(ax, **ls_args)
+        
+        if img is not None:
+            ax.text(0.03, 0.03, time.ctime(), fontsize=5, color='w',
+                    transform=ax.transAxes, ha='left', va='bottom')
+            
+            # ax.imshow(np.flipud(img), extent=xl+yl, zorder=-1000, alpha=0.8, 
+            #           aspect='auto')
+        
     fig.tight_layout(pad=0.2)
     #fig.tight_layout(pad=0.2)
     return fig
+
+
+def insert_legacysurveys_thumbnail(ax, pixscale=1, layers=['ls-dr9', 'sdss', 'unwise-neo7'], zorder=-1000, alpha=0.8, aspect='auto', verbose=True, grayscale=False, grayscale_params=[99, 1.5, -0.02], **kwargs):
+    """
+    Insert thumbnail from LegacySurveys into a plot axis with ra/dec celestial
+    coordinates (see https://www.legacysurvey.org/viewer/urls)
+    
+    Parameters
+    ----------
+    ax : `~matplotlib.axes._subplots.AxesSubplot`
+        Axis to hold the thumbnail
+    
+    pixscale : int
+        Pixel scale
+    
+    layers : list
+        Layer to pull.  The script will cycle through ``layers`` until a valid
+        layer is found
+    
+    zorder : int
+        zorder level on ``ax`` to `imshow` the thumbnail
+    
+    alpha : float
+        Transparency alpha
+    
+    aspect : float, 'auto'
+        Aspect ratio for `imshow`.  
+    
+    grayscale : bool
+        If True, plot as reverse grayscale summed from RGB thumbnail.  If > 1
+        then don't reverse grayscale
+    
+    grayscale_params : [max_percentile, scale_max, scale_min]
+        Scale grayscale image with
+        `vmax=np.percentile(img, max_percentile)*scale_max` and 
+        `vmin=scale_min*vmax`
+        
+    Returns
+    -------
+    url : str
+        Thumbnail URL
+    
+    img : array
+        Thumbnail array
+    
+    And pulls the thumbnail and inserts it into `ax`
+    
+    """
+    import numpy as np
+    
+    try:
+        from skimage import io
+    except ImportError:
+        print('insert_legacysurveys_thumbnails: Failed to import skimage')
+        return '', None
+        
+    from urllib.error import HTTPError
+    
+    ls_url = "https://www.legacysurvey.org/viewer/jpeg-cutout?"
+    ls_url += "ra={ra}&dec={dec}&pixscale={ps}&width={sw}&height={sh}"
+    ls_url += "&layer={layer}"
+    
+    xl = ax.get_xlim()
+    yl = ax.get_ylim()
+                
+    dw = np.abs(xl[1]-xl[0])
+    sw = int(np.round(dw*np.cos(np.mean(yl)/180*np.pi)*3600/pixscale))
+    sh = int(np.round((yl[1]-yl[0])*3600/pixscale))
+    
+    img = None
+    for layer in layers:
+        url = ls_url.format(ra=np.mean(xl), dec=np.mean(yl),
+                            sw=sw, sh=sh, ps=pixscale, layer=layer)
+        try:
+            img = io.imread(url)
+            if verbose:
+                print(url)
+            break
+        except HTTPError:
+            continue
+
+    if img is not None:
+        img = np.flipud(img)
+        if xl[0] < xl[1]:
+            print('insert_legacysurveys_thumbnail: RA axis is flipped')
+            img = np.fliplr(img)
+        
+        if grayscale:
+            img = (img*1.).sum(axis=2)
+            if grayscale == 1:
+                cmap = 'gray_r'
+            else:
+                cmap = 'gray'
+            
+            img -= np.median(img)
+            vma = np.percentile(img, grayscale_params[0])*grayscale_params[1]
+            vmi = grayscale_params[2]*vma
+            
+            ax.imshow(img, extent=xl+yl, zorder=zorder, alpha=alpha, 
+                      aspect='auto', cmap=cmap, vmin=vmi, vmax=vma)
+             
+        else:
+            ax.imshow(img, extent=xl+yl, zorder=zorder, alpha=alpha, 
+                      aspect='auto')
+    
+    return url, img
 
 
 def draw_axis_labels(ax=None, nlabel=3, format='latex'):
@@ -1116,7 +1321,7 @@ def draw_axis_labels(ax=None, nlabel=3, format='latex'):
     ax.set_yticklabels([t.to_string(u.deg, pad=True, fields=2+(ymaj < 1), format=format) for t in ycoo])
 
 
-def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True):
+def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True, match_detector=True):
     """
     Associate visits by filter + position + PA + date
     """
@@ -1129,7 +1334,8 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
     dx = (tab['ra'] - np.median(tab['ra']))*cosd*60    
     dy = (tab['dec'] - np.median(tab['dec']))*60
     
-    ori = np.array([query.get_orientat(tab['footprint'][i]) for i in range(len(tab))])
+    ori = np.array([query.get_orientat(tab['footprint'][i])
+                    for i in range(len(tab))])
      
     if hack_grism_pa:
         ## At least one visit (Refsdal) had a 90 degree offset between 
@@ -1147,7 +1353,19 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
     indices = np.arange(len(tab))
     assoc_idx = np.zeros(len(tab), dtype=int)-1
     
-    visit_numbers = np.array([o[4:6] for o in tab['obs_id']])
+    if 'dataURL' in tab.colnames:
+        visit_numbers = []
+        for d in tab['dataURL']:
+            if '/product/jw' in d:
+                # JWST
+                _file = d.split('/product/')[-1]
+                _visit = _file.split('_')[-6:]
+            else:
+                _visit = d.split('/product/')[-1][4:6]
+            visit_numbers.append(_visit)
+            
+    else:
+        visit_numbers = np.array([o[4:6] for o in tab['obs_id']])
     
     assoc = []
     for i in range(len(tab)):
@@ -1156,8 +1374,20 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
                 
         assoc_idx[i] = len(assoc)
         
-        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep), 'ori':ori[i], 'filter':tab['filter'][i], 'indices':[i], 'proposal_id':tab['proposal_id'][i], 'idx':len(assoc), 't_min':tab['t_min'][i], 't_max':tab['t_max'][i], 'instrument_name':tab['instrument_name'][i], 'visit_number':visit_numbers[i]}
+        assoc_i = {'pos':Point(dx[i], dy[i]).buffer(max_sep),
+                   'ori':ori[i],
+                   'filter':tab['filter'][i],
+                   'indices':[i],
+                   'proposal_id':tab['proposal_id'][i],
+                   'idx':len(assoc),
+                   't_min':tab['t_min'][i],
+                   't_max':tab['t_max'][i],
+                   'instrument_name':tab['instrument_name'][i],
+                   'visit_number':visit_numbers[i]}
         
+        if 'detector' in tab.colnames:
+            assoc_i['detector'] = tab['detector'][i]
+            
         for j in range(i+1, len(tab)):
             
             if assoc_idx[j] >= 0:
@@ -1165,6 +1395,10 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
                 
             f_j = tab['filter'][j]
             pr_j = tab['proposal_id'][j]
+            
+            if 'detector' in assoc_i:
+                det_j = tab['detector'][j]
+                
             visit_j = visit_numbers[j]
             instr_j = tab['instrument_name'][j]
             dpa = assoc_i['ori'] - ori[j]
@@ -1174,7 +1408,8 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
             # Has match
             test = (np.abs(dpa) < max_pa) & (p_j.intersects(assoc_i['pos']))
             test &= np.abs(dt) < max_time
-            test |= (visit_j == assoc_i['visit_number'])
+            if not match_detector:
+                test |= (visit_j == assoc_i['visit_number'])
             
             if match_instrument:
                 test &= (instr_j == assoc_i['instrument_name'])
@@ -1184,6 +1419,9 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
             
             if match_program:
                 test &= (pr_j == assoc_i['proposal_id'])
+            
+            if match_detector & ('detector' in assoc_i):
+                test &= (det_j == assoc_i['detector'])
                 
             if test:
                 #print('Has match!', j)
@@ -1204,7 +1442,8 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
         for ix in np.unique(assoc_orig):
             sel = assoc_orig == ix
             filts = list(np.unique(tab['filter'][sel]))
-            is_grism = np.sum([f in filts for f in ['G800L','G102','G141']]) > 0
+            is_grism = np.sum([f in filts
+                               for f in ['G800L','G102','G141']]) > 0
             
             if is_grism:
                 #print('XXX'); break
