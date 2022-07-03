@@ -883,9 +883,6 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
     from matplotlib.ticker import MultipleLocator
     from descartes import PolygonPatch
     
-    from skimage import io
-    from urllib.error import HTTPError
-    
     from astropy import units as u
     from astropy.coordinates import angles
 
@@ -1125,48 +1122,13 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
             transform=ax.transAxes, ha='left', va='bottom')
     
     if with_ls_thumbnail:
-        # ls_url = "https://www.legacysurvey.org/viewer/jpeg-cutout?"
-        # ls_url += "ra={ra}&dec={dec}&pixscale={ps}&width={sw}&height={sh}"
-        # ls_url += "&layer={layer}"
-        # 
-        # xl = ax.get_xlim()
-        # yl = ax.get_ylim()
-        # 
-        # if 'pixscale' in ls_args:
-        #     ps = ls_args['pixscale']
-        # else:
-        #     ps = 1
-        # 
-        # if 'layers' in ls_args:
-        #     _layers = ls_args['layers']
-        # else:
-        #     _layers = ['ls-dr9', 'sdss', 'unwise-neo7']
-        #     
-        # dw = np.abs(xl[1]-xl[0])
-        # sw = int(np.round(dw*np.cos(np.mean(yl)/180*np.pi)*3600/ps))
-        # sh = int(np.round((yl[1]-yl[0])*3600/ps))
-        # 
-        # img = None
-        # for layer in _layers:
-        #     url = ls_url.format(ra=np.mean(xl), dec=np.mean(yl),
-        #                         sw=sw, sh=sh, ps=ps, layer=layer)
-        #     try:
-        #         img = io.imread(url)
-        #         print(url)
-        #         break
-        #     except HTTPError:
-        #         continue
         url, img = insert_legacysurveys_thumbnail(ax, **ls_args)
         
         if img is not None:
             ax.text(0.03, 0.03, time.ctime(), fontsize=5, color='w',
                     transform=ax.transAxes, ha='left', va='bottom')
-            
-            # ax.imshow(np.flipud(img), extent=xl+yl, zorder=-1000, alpha=0.8, 
-            #           aspect='auto')
-        
+
     fig.tight_layout(pad=0.2)
-    #fig.tight_layout(pad=0.2)
     return fig
 
 
