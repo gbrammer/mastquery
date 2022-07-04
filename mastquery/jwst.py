@@ -7,8 +7,15 @@ https://mast.stsci.edu/api/v0/_services.html#MastScienceInstrumentKeywordsNircam
 
 """
 import os
+import logging
 import numpy as np
+import yaml
 
+try:
+    import pysiaf
+except ImportError:
+    print('`import pysiaf` failed, necessary for JWST processing')
+    
 ALL_COLUMNS = ['ArchiveFileID', 'filename', 'fileSetName', 'productLevel',
                'act_id', 'apername', 'asnpool', 'asntable', 'bartdelt',
                'bendtime', 'bkgdtarg', 'bkglevel', 'bkgsub', 'bmidtime',
@@ -173,19 +180,69 @@ def make_query_filter(column='filters', values=['F200W'], text=None, range=None)
     return [filt]
     
     
-def programs(progs):
+def make_program_filter(progs):
     """
     Helper for generating a filter on a list of program ids
+    
+    Parameters
+    ----------
+    progs : list
+        `program` ID numbers
+    
+    Returns
+    -------
+    pfilter : dict
+        MAST CAOM filter dict for program IDs.
+        
     """
     return make_query_filter(column='program', 
                         values=[f'{int(p)}' for p in progs])
 
 
-def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None, **kwargs):
+def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None, sort='expstart', fix=True, **kwargs):
     """
-    Combine all instruments
+    Combined query for all instruments
+    
+    Parameters
+    ----------
+    instruments : list
+        Instruments to query (``NRC``, ``NIS``, ``NRS``, ``MIR``)
+    
+    columns : list, None
+        Columns to query.  If None, then get all (`'*`') columns
+    
+    rd : (float, float), (float, float, float), None
+        If a 2-tuple, then return exposures where `s_region` contains `rd`.  
+        If a 3-tuple, then find fields where `(targ_ra, targ_dec)` within 
+        `rd[2]` arcmin of `rd[0,1]`
+    
+    sort : float
+        Column for sorting the output table
+    
+    fix : bool
+        Fixes to make make instrument queries more compatible with the 
+        high-level MAST query results (e.g., HST).
+        
+        >>> mastquery.jwst.set_missing_footprints(jw)
+        >>> mastquery.jwst.fix_jwst_sregions(jw)
+        >>> mastquery.jwst.set_footprint_centroids(jw)
+        >>> mastquery.jwst.match_dataportal_columns(jw)
+    
+    kwargs : dict
+        Keyword args passed to instrument-level `mastquery.jwst.query_jwst` 
+        queries, e.g., `filters`, `recent_days`.
+        
+    Returns
+    -------
+    jw : table
+        Query result
+        
     """                        
     import astropy.table
+        
+    log = logging.getLogger()
+    log.debug('kwargs')
+    log.debug(yaml.dump(kwargs))
     
     res = []
     for inst in instruments:
@@ -215,7 +272,7 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
                 
         t.remove_columns(empty)
     
-    full = astropy.table.vstack(res)
+    jw = astropy.table.vstack(res)
     
     if rd is not None:
         from grizli import utils
@@ -227,13 +284,13 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
             
             tab = utils.GTable()
             tab['ra'], tab['dec'] = [rd[0]], [rd[1]]
-            idx, dr = tab.match_to_catalog_sky(full, 
+            idx, dr = tab.match_to_catalog_sky(jw, 
                                          other_radec=('prop_ra', 'prop_dec'))
             
             sel = dr.value < 60*20
             ix = np.where(sel)[0]
             for i in ix:
-                fp = full['s_region'][i]
+                fp = jw['s_region'][i]
                 try:
                     sr = utils.SRegion(fp)
                     sel[i] = sr.shapely[0].contains(pt)
@@ -247,14 +304,35 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
             # Separation in arcmin
             tab = utils.GTable()
             tab['ra'], tab['dec'] = [rd[0]], [rd[1]]
-            idx, dr = tab.match_to_catalog_sky(full, 
+            idx, dr = tab.match_to_catalog_sky(jw, 
                                          other_radec=('prop_ra', 'prop_dec'))
             
             sel = dr.value < rd[2]*60
         
-        full = full[sel]
+        jw = jw[sel]
     
-    return full
+    if sort is not None:
+        if sort in jw.colnames:
+            log.debug(f"Sort on column {sort}")
+            
+            so = np.argsort(jw[sort])
+            jw = jw[so]
+        else:
+            log.warning(f"sort='{sort}' column not found")
+    
+    if fix:
+        log.info('Apply fixes to JWST query')
+        set_missing_footprints(jw)
+        fix_jwst_sregions(jw)
+        set_footprint_centroids(jw)
+        match_dataportal_columns(jw)
+    
+    if len(jw) > 0:
+        log.info(f'Full query on {instruments} N={len(jw)}')
+    else:
+        log.warning('Nothing found!')
+        
+    return jw
 
 
 def fix_jwst_sregions(res):
@@ -273,7 +351,11 @@ def fix_jwst_sregions(res):
     
     res['orig_s_region'] = res['s_region']
     
-    for i in tqdm(range(len(res))):
+    _iter = range(len(res))
+    if len(res) > 2000:
+        _iter = tqdm(_iter)
+        
+    for i in _iter:
         if not res['xoffset'][i]:
             s_region.append(res['s_region'][i])
             continue
@@ -322,6 +404,8 @@ def set_missing_footprints(res):
     Set missing s_region entries, mostly NIRISS
     """
     from sregion import SRegion
+    log = logging.getLogger()
+    log.debug(f'N = {len(res)}')
     
     # Set Grism footprints
     sprev = {}
@@ -340,7 +424,14 @@ def set_missing_footprints(res):
                 res[i]['s_region'] = sprev[res['instrume'][i]]
                 pass
 
-    # Set RA/Dec to footprint centroid
+def set_footprint_centroids(res):
+    """
+    Set ra/dec to s_region centroid
+    """
+    from sregion import SRegion
+    log = logging.getLogger()
+    log.debug(f'N = {len(res)}')
+
     res['ra'] = 0.
     res['dec'] = 0.
 
@@ -354,6 +445,8 @@ def match_dataportal_columns(res):
     Match some columns in the jwst query to the output from the dataportal 
     query
     """
+    log = logging.getLogger()
+    log.debug(f'N = {len(res)}')
     
     # Fill columns with single value
     fill_cols = {'obs_collection':'JWST',
@@ -410,12 +503,14 @@ def match_dataportal_columns(res):
             res['filter'][i] = f'{inst_i}.{f_i}'
 
 
-def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal']):
+def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal'], verbose=True):
     """
     Query 
     """
     import json
     import astropy.time
+    
+    log = logging.getLogger()
     
     from mastquery.utils import mastQuery, mastJson2Table
     from mastquery.utils import new_mastJson2Table, new_mast_query
@@ -424,7 +519,8 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         now = astropy.time.Time.now().mjd
         filters = [f for f in filters]
         filters.append({'paramName': 'expstart', 
-                        'values': [{"min":now-recent_days, "max":now+1}]})
+                        'values': [{"min":float(now-recent_days),
+                                    "max":float(now+1)}]})
     
     if instrument.upper() not in SERVICES:
         msg = "Valid options for `instrument` are 'NIS', 'NRC', 'NRS', 'MIR' "
@@ -440,7 +536,11 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         request[k] = extra[k]
     
     try:
-        print('request =', request)
+
+        log.info(f'Query JWST {instrument}')
+        log.debug(f'Request: ')
+        log.debug(yaml.dump(request))
+        
         head, content = new_mast_query(request)
     except:
         head, content = mastQuery(request)
@@ -465,8 +565,8 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         ext = [f.split('_')[-1].split('.')[0] for f in tab['filename']]
         in_ext = np.in1d(ext, extensions)
         if in_ext.sum() == 0:
-            print(f'Warning: no files with extensions {extensions} found.')
-            print(f'Available extensions are {np.unique(ext).tolist()}')
+            log.warning(f'No files with extensions {extensions} found.')
+            log.warning(f'Available extensions are {np.unique(ext).tolist()}')
             
         tab = tab[in_ext]
         
@@ -492,7 +592,9 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         tab['inst-mode'] = [f'{ii}-{f}'.replace('---','').replace('-CLEAR','')
                                for ii, f in
                             zip(tab['instrume'], tab['filter'])]
-        
+    
+    log.info(f'Query JWST {instrument} N={len(tab)}\n')
+    
     return tab
 
 
