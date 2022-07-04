@@ -4,11 +4,17 @@ Scripts to find overlapping HST data
 
 import time
 import os
+import yaml
 
 import traceback
 import inspect
+
+from sregion import SRegion
 from . import query, utils
-  
+from .plot_utils import draw_axis_labels, insert_legacysurveys_thumbnail
+
+TQDM_MIN = 2000
+
 def test():
     
     import copy
@@ -50,7 +56,11 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     match_ids = [[0]]
     
     # Loop through polygons and combine those that overlap
-    for i in tqdm(range(1,len(polygons))):
+    _iter = range(1,len(polygons))
+    if len(polygons) > TQDM_MIN:
+        _iter = tqdm(_iter)
+        
+    for i in _iter:
         # if verbose > 1:
         #     print(utils.NO_NEWLINE+'Parse {0:4d} (N={1})'.format(i, 
         #                                             len(match_poly)))
@@ -83,8 +93,12 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     
         match_poly = [mpolygons[0]]
         match_ids = [mids[0]]
-    
-        for i in tqdm(range(1,len(mpolygons))):
+        
+        _iter = range(1,len(mpolygons))
+        if len(mpolygons) > TQDM_MIN:
+            _iter = tqdm(_iter)
+        
+        for i in _iter:
             # if verbose > 1:
             #     print(utils.NO_NEWLINE+'Parse, iter {0}, {1:4d}'.format(iter+1, i))
                 
@@ -113,7 +127,30 @@ def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     return match_poly, match_ids
 
 
-def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.npy', load_poly_file=False, min_radius=2, bad_area=0.3):
+def _save_poly_file(poly_file, match_poly, match_ids):
+    """
+    Save polygon summary
+    """
+    _data = {'match_poly': [SRegion(p).s_region for p in match_poly],
+             'match_ids': match_ids}
+             
+    with open(poly_file,'w') as _fp:
+        yaml.dump(_data, _fp)
+
+
+def _load_poly_file(poly_file):
+    """
+    Load the saved polygon summary file
+    """
+    with open(poly_file) as _fp:
+        _ = yaml.load(_fp, Loader=yaml.SafeLoader)
+    
+    match_poly = [SRegion(p).union(as_polygon=True) for p in _['match_poly']]
+    match_ids = _['match_ids']
+    return match_poly, match_ids
+
+
+def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WFC3/UVIS', 'ACS/WFC'], proposal_id=[], SKIP=False, base_query=query.DEFAULT_QUERY, extra={}, close=True, use_parent=False, extensions=['FLT','C1M'], include_subarrays=False, min_area=0.2, show_parent=True, show_parent_box=True, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', prefix='', suffix='', jstr='{prefix}{jname}{suffix}', fractional_overlap=0, patch_alpha=0.1, parent_alpha=0.1, tile_alpha=0.1, verbose=2, keep_single_name=True, poly_file='overlaps.yaml', load_poly_file=False, min_radius=2, bad_area=0.3):
     """
     Compute discrete groups from the parent table and find overlapping
     datasets.
@@ -313,13 +350,17 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     #     
     #     if len(mpolygons) == len(match_poly):
     #         break
-    
-    if os.path.exists(poly_file) & (load_poly_file):
-        match_poly, match_ids = np.load(poly_file, allow_pickle=True)
-    else:
-        match_poly, match_ids = parse_overlap_polygons(polygons, fractional_overlap=fractional_overlap, verbose=verbose)
-        np.save(poly_file, [match_poly, match_ids])
             
+    if os.path.exists(poly_file) & (load_poly_file):
+        match_poly, match_ids = _load_poly_file(poly_file)
+    else:
+        match_poly, match_ids = parse_overlap_polygons(polygons, 
+                                      fractional_overlap=fractional_overlap, 
+                                      verbose=verbose)
+        
+        _save_poly_file(poly_file, match_poly, match_ids)                           
+        #np.save(poly_file, [match_poly, match_ids])
+
     # Save figures and tables for the unique positions
     BLUE = '#6699cc'
     
@@ -559,8 +600,16 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         if close:
             plt.close()
 
-        xtab.write('{0}_footprint.fits'.format(jname), format='fits', overwrite=True)
-        np.save('{0}_footprint.npy'.format(jname), [p, box])
+        xtab.write('{0}_footprint.fits'.format(jname), format='fits', 
+                   overwrite=True)
+        
+        _data = {'p':SRegion(p).s_region, 
+                 'box':[float(b) for b in box]}
+        
+        with open('{0}_footprint.yaml'.format(jname),'w') as _fp:
+            yaml.dump(_data, _fp)
+            
+        #np.save('{0}_footprint.npy'.format(jname), [p, box])
         
         tables.append(xtab)
     
@@ -939,8 +988,8 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                         filt_i = s
                         break
                                 
-        if hasattr(p_i, '__len__'):
-            all_p = [p for p in p_i]
+        if hasattr(p_i, 'geoms'):
+            all_p = [p for p in p_i.geoms]
         else:
             all_p = [p_i]
         
@@ -1130,158 +1179,6 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
 
     fig.tight_layout(pad=0.2)
     return fig
-
-
-def insert_legacysurveys_thumbnail(ax, pixscale=1, layers=['ls-dr9', 'sdss', 'unwise-neo7'], zorder=-1000, alpha=0.8, aspect='auto', verbose=True, grayscale=False, grayscale_params=[99, 1.5, -0.02], **kwargs):
-    """
-    Insert thumbnail from LegacySurveys into a plot axis with ra/dec celestial
-    coordinates (see https://www.legacysurvey.org/viewer/urls)
-    
-    Parameters
-    ----------
-    ax : `~matplotlib.axes._subplots.AxesSubplot`
-        Axis to hold the thumbnail
-    
-    pixscale : int
-        Pixel scale
-    
-    layers : list
-        Layer to pull.  The script will cycle through ``layers`` until a valid
-        layer is found
-    
-    zorder : int
-        zorder level on ``ax`` to `imshow` the thumbnail
-    
-    alpha : float
-        Transparency alpha
-    
-    aspect : float, 'auto'
-        Aspect ratio for `imshow`.  
-    
-    grayscale : bool
-        If True, plot as reverse grayscale summed from RGB thumbnail.  If > 1
-        then don't reverse grayscale
-    
-    grayscale_params : [max_percentile, scale_max, scale_min]
-        Scale grayscale image with
-        `vmax=np.percentile(img, max_percentile)*scale_max` and 
-        `vmin=scale_min*vmax`
-        
-    Returns
-    -------
-    url : str
-        Thumbnail URL
-    
-    img : array
-        Thumbnail array
-    
-    And pulls the thumbnail and inserts it into `ax`
-    
-    """
-    import numpy as np
-    
-    try:
-        from skimage import io
-    except ImportError:
-        print('insert_legacysurveys_thumbnails: Failed to import skimage')
-        return '', None
-        
-    from urllib.error import HTTPError
-    
-    ls_url = "https://www.legacysurvey.org/viewer/jpeg-cutout?"
-    ls_url += "ra={ra}&dec={dec}&pixscale={ps}&width={sw}&height={sh}"
-    ls_url += "&layer={layer}"
-    
-    xl = ax.get_xlim()
-    yl = ax.get_ylim()
-                
-    dw = np.abs(xl[1]-xl[0])
-    sw = int(np.round(dw*np.cos(np.mean(yl)/180*np.pi)*3600/pixscale))
-    sh = int(np.round((yl[1]-yl[0])*3600/pixscale))
-    
-    img = None
-    for layer in layers:
-        url = ls_url.format(ra=np.mean(xl), dec=np.mean(yl),
-                            sw=sw, sh=sh, ps=pixscale, layer=layer)
-        try:
-            img = io.imread(url)
-            if verbose:
-                print(url)
-            break
-        except HTTPError:
-            continue
-
-    if img is not None:
-        img = np.flipud(img)
-        if xl[0] < xl[1]:
-            print('insert_legacysurveys_thumbnail: RA axis is flipped')
-            img = np.fliplr(img)
-        
-        if grayscale:
-            img = (img*1.).sum(axis=2)
-            if grayscale == 1:
-                cmap = 'gray_r'
-            else:
-                cmap = 'gray'
-            
-            img -= np.median(img)
-            vma = np.percentile(img, grayscale_params[0])*grayscale_params[1]
-            vmi = grayscale_params[2]*vma
-            
-            ax.imshow(img, extent=xl+yl, zorder=zorder, alpha=alpha, 
-                      aspect='auto', cmap=cmap, vmin=vmi, vmax=vma)
-             
-        else:
-            ax.imshow(img, extent=xl+yl, zorder=zorder, alpha=alpha, 
-                      aspect='auto')
-    
-    return url, img
-
-
-def draw_axis_labels(ax=None, nlabel=3, format='latex'):
-    """
-    Draw rounded axis labels in DMS format
-    """
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import MultipleLocator
-    from descartes import PolygonPatch
-    
-    from astropy import units as u
-    from astropy.coordinates import angles
-    
-    if ax is None:
-        ax = plt.gca()
-    
-    dy = np.abs(np.diff(ax.get_ylim()))
-    dx = np.abs(np.diff(ax.get_xlim()))
-    
-    yopts = [30./60, 1,2,4,8,16,30,60, 120, 240]
-    yminor = [5./60, 10./60,1,2,2,4,10,15, 30, 60]
-    ymaj = np.maximum(1., np.round(dy*60/nlabel))
-    y_i = int(np.round(np.interp(ymaj, yopts, range(len(yopts)), left=0)))
-    ymaj = yopts[y_i]
-    yminor = yminor[y_i]
-    
-    xopts =  [2, 5, 10, 15,30,60,120, 240, 480]
-    xminor = [1, 1, 5, 5, 10, 15, 30, 60, 120]
-    xmaj = np.maximum(1, np.round(dx*24/360*3600/nlabel))
-    x_i = int(np.round(np.interp(xmaj, xopts, range(len(xopts)), left=0)))
-    xmaj = xopts[x_i]
-    xminor = xminor[x_i]
-    
-    ax.xaxis.set_major_locator(MultipleLocator(xmaj/3600*360/24))
-    ax.yaxis.set_major_locator(MultipleLocator(ymaj/60))
-
-    ax.xaxis.set_minor_locator(MultipleLocator(xminor/3600*360/24))
-    ax.yaxis.set_minor_locator(MultipleLocator(yminor/60))
-    
-    xcoo = [angles.Longitude(t*u.deg) for t in ax.get_xticks()]
-    ycoo = [angles.Latitude(t*u.deg) for t in ax.get_yticks()]
-    
-    ax.set_xticklabels([t.to_string(u.hourangle, pad=True, fields=2+((xmaj < 60)), precision=0, format=format) for i, t in enumerate(xcoo)])
-    ax.set_yticklabels([t.to_string(u.deg, pad=True, fields=2+(ymaj < 1), format=format) for t in ycoo])
-
 
 def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., match_filter=True, match_instrument=True, match_program=True, hack_grism_pa=True, parse_for_grisms=True, match_detector=True):
     """
