@@ -461,6 +461,8 @@ def match_dataportal_columns(res):
 
         res[c] = fill_cols[c]
     
+    res['orig-filter'] = res['filter']
+    
     # Translate columns
     col_translate = {'targname':'target', 
                      'filter-pupil':'filter',
@@ -479,8 +481,6 @@ def match_dataportal_columns(res):
     for c in col_translate:
         if c in res.colnames:
             res[col_translate[c]] = res[c]
-
-    res['orig-filter'] = res['filter']
 
     res.remove_column('filter')
     res['filter'] = res['inst-mode']
