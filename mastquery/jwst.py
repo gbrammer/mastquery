@@ -359,10 +359,13 @@ def fix_jwst_sregions(res):
         if not res['xoffset'][i]:
             s_region.append(res['s_region'][i])
             continue
-
+        
         aper_name = res['apername'][i]
-        dx, dy = 0., 0.
-
+                
+        if res['pps_aper'][i] not in siaf[res['instrume'][i]].apertures:
+            s_region.append(res['s_region'][i])
+            continue
+            
         ap_ref = siaf[res['instrume'][i]].apertures[res['pps_aper'][i]]
 
         if aper_name == 'MIRIM_FULL':
@@ -575,8 +578,10 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         tab['dt'].format = '.2f'
     
     if ('program' in tab.colnames) & ('pi_name' in tab.colnames):
-        tab['prog_pi'] = [f'{prog} {pi}'
-                          for prog, pi in zip(tab['program'], tab['pi_name'])]
+        tab['prog_pi'] = [f'{ca:>4}-{pr} {pi}'
+                          for ca, pr, pi in zip(tab['category'], 
+                                                tab['program'],
+                                                tab['pi_name'])]
     
     if ('filter' in tab.colnames) & ('pupil' in tab.colnames):
         tab['filter-pupil'] = [f'{f}-{p}'.replace('---','')
