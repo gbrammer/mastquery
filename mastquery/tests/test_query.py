@@ -21,6 +21,8 @@ def test_query():
     
     # cleanup
     files = glob.glob(f"{olap[0].meta['NAME']}*")
+    files += glob.glob('overlaps.yaml')
+    
     for file in files:
         os.remove(file)
         
