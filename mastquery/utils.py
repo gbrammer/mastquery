@@ -254,7 +254,7 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_size=1, delete_small=True):
+def download_from_mast(tab, path='./', verbose=True, overwrite=True, min_size=1, delete_small=True):
     """
     Download files from MAST API
     
@@ -265,7 +265,7 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
         or ``dataURL``.  If a `list`, then assumes they are strings of 
         ``dataURL``/``dataURI`` names.
     
-    out_path : str
+    path : str
         Output path
     
     verbose : bool
@@ -298,9 +298,9 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
     if isinstance(tab, list):
         tab = Table(names=['dataURI'], rows=[[u] for u in tab])
         
-    if not os.path.exists(out_path):
-        log.info(f'mkdir {out_path}')
-        os.makedirs(out_path)
+    if not os.path.exists(path):
+        log.info(f'mkdir {path}')
+        os.makedirs(path)
     
     outlist = []
     
@@ -315,7 +315,7 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
         else:
             _file = os.path.basename(_uri)
             
-        out_file = os.path.join(out_path, os.path.basename(_file))
+        out_file = os.path.join(path, os.path.basename(_file))
         
         if os.path.exists(out_file) & (not overwrite):
             log.info(f'{out_file} exists, skip')
