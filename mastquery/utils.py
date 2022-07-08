@@ -269,7 +269,7 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
         Output path
     
     verbose : bool
-        Print status messages
+        Print status messages [deprecated, now uses `logging`]
     
     overwrite : bool
         Overwrite existing files
