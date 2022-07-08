@@ -252,7 +252,7 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_size=1):
+def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_size=1, delete_small=True):
     """
     Download files from MAST API
     
@@ -274,6 +274,9 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
     min_size : float
         Minimum size in megabits to check if the downloaded file is rather
         an `Access Denied` file
+      
+    delete_small : bool
+        Remove the file if it failed the `min_size` test
         
     """
     import requests
@@ -311,6 +314,8 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
             fs = os.path.getsize(out_file)/1e6
             if fs < min_size:
                 print(f"WARNING: {out_file} is {fs:.1} Mb so is probably 'Access Denied'")
+                if delete_small:
+                    os.remove(out_file)
             else:
                 if verbose:
                     print("COMPLETE: ", out_file)
