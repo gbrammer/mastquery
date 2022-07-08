@@ -319,6 +319,7 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
         
         if os.path.exists(out_file) & (not overwrite):
             log.info(f'{out_file} exists, skip')
+            outlist.append(out_file)
             continue
                 
         # Download the data   
