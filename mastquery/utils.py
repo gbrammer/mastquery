@@ -6,6 +6,8 @@ import inspect
 import json
 
 import warnings
+import logging
+
 import numpy as np
 
 from astropy.table import Table
@@ -258,9 +260,10 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
     
     Parameters
     ----------
-    tab : table
-        Table from MAST API query with minimal columns ``filename``, 
-        ``dataURI``.
+    tab : table, list
+        Table from MAST API query with minimal column ``dataURI``
+        or ``dataURL``.  If a `list`, then assumes they are strings of 
+        ``dataURL``/``dataURI`` names.
     
     out_path : str
         Output path
@@ -281,45 +284,63 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
     """
     import requests
     import os
+    from astropy.table import Table
+    log = logging.getLogger()
     
     download_url = 'https://mast.stsci.edu/api/v0.1/Download/file?'
     
+    # Input is a list
+    if isinstance(tab, list):
+        tab = Table(names=['dataURI'], rows=[[u] for u in tab])
+        
     if not os.path.exists(out_path):
-        if verbose:
-            print(f'mkdir {out_path}')
-            os.makedirs(out_path)
+        log.info(f'mkdir {out_path}')
+        os.makedirs(out_path)
     
     for row in tab:     
+        if 'dataURI' in row.colnames:
+            _uri = row['dataURI']
+        else:
+            _uri = row['dataURL']
 
-        out_file = os.path.join(out_path, os.path.basename(row['filename']))
+        if 'filename' in row.colnames:
+            _file = row['filename']
+        else:
+            _file = os.path.basename(_uri)
+            
+        out_file = os.path.join(out_path, os.path.basename(_file))
         
         if os.path.exists(out_file) & (not overwrite):
-            if verbose:
-                print(f'{out_file} exists')
-                continue
+            log.info(f'{out_file} exists, skip')
+            continue
                 
-        # Download the data
-        payload = {"uri":row['dataURI']}
+        # Download the data   
+        log.info(f"Download: {out_file}")
+             
+        payload = {"uri":_uri}        
         resp = requests.get(download_url, params=payload)
 
-        # save to file
+        # save to file        
         with open(out_file,'wb') as FLE:
             FLE.write(resp.content)
         
         # check for file 
         if not os.path.isfile(out_file):
-            if verbose:
-                print("ERROR: " + out_file + " failed to download.")
+            # No file
+            msg = f'{out_file} failed to download.'
+            log.warning(msg)
         else:
             fs = os.path.getsize(out_file)/1e6
             if fs < min_size:
-                print(f"WARNING: {out_file} is {fs:.1} Mb so is probably 'Access Denied'")
+                msg = f"{out_file} is {fs:.1} Mb so is probably "
+                msg += "'Access Denied'"
+                log.warning(msg)
+                
                 if delete_small:
                     os.remove(out_file)
             else:
-                if verbose:
-                    print("COMPLETE: ", out_file)
-        
+                log.info(f"Complete: {out_file} ({fs:.1} Mb)")
+
 
 ###############
 
