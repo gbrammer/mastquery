@@ -280,6 +280,11 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
       
     delete_small : bool
         Remove the file if it failed the `min_size` test
+    
+    Returns
+    -------
+    outlist : list
+        List of valid downloaded files
         
     """
     import requests
@@ -296,6 +301,8 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
     if not os.path.exists(out_path):
         log.info(f'mkdir {out_path}')
         os.makedirs(out_path)
+    
+    outlist = []
     
     for row in tab:     
         if 'dataURI' in row.colnames:
@@ -319,7 +326,7 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
              
         payload = {"uri":_uri}        
         resp = requests.get(download_url, params=payload)
-
+        
         # save to file        
         with open(out_file,'wb') as FLE:
             FLE.write(resp.content)
@@ -340,9 +347,10 @@ def download_from_mast(tab, out_path='./', verbose=True, overwrite=True, min_siz
                     os.remove(out_file)
             else:
                 log.info(f"Complete: {out_file} ({fs:.1} Mb)")
+                outlist.append(out_file)
+    
+    return outlist
 
-
-###############
 
 def table_from_info(info):
     """
