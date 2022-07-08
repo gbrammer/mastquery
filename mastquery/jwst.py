@@ -136,7 +136,8 @@ REQUEST = {'service': 'Mast.Jwst.Filtered.Niriss',
 SERVICES = {'NIS':'Mast.Jwst.Filtered.Niriss', 
             'NRC':'Mast.Jwst.Filtered.Nircam',
             'MIR':'Mast.Jwst.Filtered.Miri',
-            'NRS':'Mast.Jwst.Filtered.Nirspec'}
+            'NRS':'Mast.Jwst.Filtered.Nirspec', 
+            'FGS':'Mast.Jwst.Filtered.Fgs'}
 
 FILTER_EXAMPLES = [{'paramName':
                     'productLevel', 'values': ['2a','2b']},
@@ -344,7 +345,7 @@ def fix_jwst_sregions(res):
     from sregion import SRegion
 
     siaf = {}
-    for ins in ['MIRI','NIRISS','NIRCAM','NIRSPEC']:
+    for ins in ['MIRI','NIRISS','NIRCAM','NIRSPEC','FGS']:
         siaf[ins] = pysiaf.Siaf(ins)
 
     s_region = []
@@ -498,7 +499,8 @@ def match_dataportal_columns(res):
         inst_i = {'NIRCAM':'NC', 
                   'NIRISS':'NS',
                   'MIRI':'MI',
-                  'NIRSPEC':'NS'}[inst]
+                  'NIRSPEC':'NS',
+                  'FGS':'FGS'}[inst]
                   
         if 'GR' in f_i:
             res['filter'][i] = f'{f_i}'
