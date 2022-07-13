@@ -254,7 +254,98 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def download_from_mast(tab, path='./', verbose=True, overwrite=True, min_size=1, delete_small=True):
+def download_from_mast(tab, path=None, verbose=True, overwrite=True, use_token=True, base_url=None, cloud_only=False, **kwargs):
+    """
+    Download files from MAST API with `astroquery.mast.Observations.download_file`
+    
+    Parameters
+    ----------
+    tab : table, list
+        Table from MAST API query with minimal column ``dataURI``
+        or ``dataURL``.  If a `list`, then assumes they are strings of 
+        ``dataURL``/``dataURI`` names.
+    
+    path : str
+        Output path, defaults to current working diretory
+    
+    verbose : bool
+        Print status messages [deprecated, now uses `logging`]
+    
+    overwrite : bool
+        Overwrite existing files
+    
+    use_token : bool
+        Try to use a MAST token defined in a ``MAST_TOKEN`` environment 
+        variable.  See https://auth.mast.stsci.edu/info for info about the 
+        token authentication.
+    
+    base_url : str
+        A base url to use when downloading.  Default is the MAST Portal API
+    
+    cloud_only : bool
+        See `astroquery.mast.Observations.download_file`
+        
+    Returns
+    -------
+    resp : dict
+        Dict of responses from `astroquery.mast.Observations.download_file`
+        
+    """
+    from astroquery.mast import Observations
+    log = logging.getLogger()
+    
+    if (os.getenv('MAST_TOKEN') is None) | (not use_token):
+        session = Observations
+    else:
+        try:
+            session = Observations(mast_token=os.getenv('MAST_TOKEN'))
+        except:
+            session = Observations(token=os.getenv('MAST_TOKEN'))
+    
+    # Input is a list
+    if isinstance(tab, list):
+        tab = Table(names=['dataURI'], rows=[[u] for u in tab])
+    
+    if path is not None:
+        if not os.path.exists(path):
+            log.info(f'mkdir {path}')
+            os.makedirs(path)
+            
+    kws = {'local_path': path, 
+           'cache':(not overwrite), 
+           'base_url':base_url,
+           'cloud_only':cloud_only}
+    
+    resp = {}
+    for row in tab:     
+        if 'dataURI' in row.colnames:
+            _uri = row['dataURI']
+        else:
+            _uri = row['dataURL']
+
+        _file = os.path.basename(_uri)
+            
+        if path is None:
+            out_file = _file
+        else:
+            out_file = os.path.join(path, os.path.basename(_file))
+            kws['local_path'] = out_file
+            
+        if os.path.exists(out_file) & (not overwrite):
+            log.info(f'{out_file} exists, skip')
+            resp[out_file] = ('EXISTS', None, None)
+            continue
+                
+        # Download the data   
+        log.info(f"Download: {out_file}")
+             
+        payload = {"uri":_uri}        
+        resp[out_file] = session.download_file(_uri, **kws)
+    
+    return resp
+
+
+def old_download_from_mast(tab, path='./', verbose=True, overwrite=True, min_size=1, delete_small=True):
     """
     Download files from MAST API
     
@@ -289,7 +380,6 @@ def download_from_mast(tab, path='./', verbose=True, overwrite=True, min_size=1,
     """
     import requests
     import os
-    from astropy.table import Table
     log = logging.getLogger()
     
     download_url = 'https://mast.stsci.edu/api/v0.1/Download/file?'
