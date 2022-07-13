@@ -497,7 +497,7 @@ def match_dataportal_columns(res):
         f_i = f_i.replace('.GRISMR','').replace('.GRISMC','')
 
         inst_i = {'NIRCAM':'NC', 
-                  'NIRISS':'NS',
+                  'NIRISS':'NI',
                   'MIRI':'MI',
                   'NIRSPEC':'NS',
                   'FGS':'FGS'}[inst]
