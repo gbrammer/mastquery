@@ -254,7 +254,7 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def download_from_mast(tab, path=None, verbose=True, overwrite=True, use_token=True, base_url=None, cloud_only=False, **kwargs):
+def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, **kwargs):
     """
     Download files from MAST API with `astroquery.mast.Observations.download_file`
     
