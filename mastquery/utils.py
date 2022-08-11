@@ -254,7 +254,7 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, **kwargs):
+def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, **kwargs):
     """
     Download files from MAST API with `astroquery.mast.Observations.download_file`
     
@@ -284,6 +284,9 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
     
     cloud_only : bool
         See `astroquery.mast.Observations.download_file`
+    
+    force_rate : bool
+        Replace 'cal' with 'rate' in filenames.
         
     Returns
     -------
@@ -324,6 +327,9 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
             _uri = row['dataURL']
 
         _file = os.path.basename(_uri)
+        if force_rate:
+            _file = _file.replace('_cal','_rate')
+            _uri = _uri.replace('_cal','_rate')
             
         if path is None:
             out_file = _file
