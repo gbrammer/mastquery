@@ -137,7 +137,8 @@ SERVICES = {'NIS':'Mast.Jwst.Filtered.Niriss',
             'NRC':'Mast.Jwst.Filtered.Nircam',
             'MIR':'Mast.Jwst.Filtered.Miri',
             'NRS':'Mast.Jwst.Filtered.Nirspec', 
-            'FGS':'Mast.Jwst.Filtered.Fgs'}
+            'FGS':'Mast.Jwst.Filtered.Fgs',
+            'GS':'Mast.Jwst.Filtered.GuideStar'}
 
 FILTER_EXAMPLES = [{'paramName':
                     'productLevel', 'values': ['2a','2b']},
@@ -324,7 +325,7 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
     if fix:
         log.info('Apply fixes to JWST query')
         set_missing_footprints(jw)
-        fix_jwst_sregions(jw)
+        jw = fix_jwst_sregions(jw)
         set_footprint_centroids(jw)
         match_dataportal_columns(jw)
     
@@ -350,6 +351,10 @@ def fix_jwst_sregions(res):
 
     s_region = []
     
+    if hasattr(res['s_region'], 'mask'):
+        print(f"Remove {res['s_region'].mask.sum()} rows with missing s_region")
+        res = res[~res['s_region'].mask]
+        
     res['orig_s_region'] = res['s_region']
     
     _iter = range(len(res))
@@ -401,6 +406,7 @@ def fix_jwst_sregions(res):
         s_region.append(' '.join(sreg)) #sr.s_region
 
     res['s_region'] = s_region
+    return res
 
 
 def set_missing_footprints(res):
@@ -592,7 +598,7 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         tab['inst-mode'] = [f'{ii}-{f}-{p}'.replace('---','').replace('-CLEAR','')
                                for ii, f, p in
                             zip(tab['instrume'], tab['filter'], tab['pupil'])]
-    else:
+    elif 'filter' in tab.colnames:
         tab['filter-pupil'] = [f'{f}'.replace('---','')
                                for f in tab['filter']]
         
@@ -604,4 +610,31 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     
     return tab
 
+
+def query_guidestar_log(mjd=None, program=None, exp_type=['FGS_FINEGUIDE']):
+    """
+    Query GuideStar log files
+    """
+    filters = []
+    filters += make_query_filter('exp_type', values=exp_type)
+    
+    if program is not None:
+        filters += make_program_filter([program])
+        
+    if mjd is not None:
+        filters += make_query_filter('gf_start_mjd', range=mjd)
+    
+    gs = query_jwst(instrument='GS',
+                         columns='*',
+                         filters=filters,
+                         extensions=['cal'])
+    
+    if len(gs) > 0:
+        if ('expstart' not in gs) & ('gf_start_mjd' in gs.colnames):
+            gs['expstart'] = gs['gf_start_mjd']
+
+        if ('expend' not in gs) & ('gf_end_mjd' in gs.colnames):
+            gs['expend'] = gs['gf_end_mjd']
+            
+    return gs
 
