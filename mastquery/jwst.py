@@ -630,10 +630,10 @@ def query_guidestar_log(mjd=None, program=None, exp_type=['FGS_FINEGUIDE']):
                          extensions=['cal'])
     
     if len(gs) > 0:
-        if ('expstart' not in gs) & ('gf_start_mjd' in gs.colnames):
+        if ('expstart' not in gs.colnames) & ('gf_start_mjd' in gs.colnames):
             gs['expstart'] = gs['gf_start_mjd']
 
-        if ('expend' not in gs) & ('gf_end_mjd' in gs.colnames):
+        if ('expend' not in gs.colnames) & ('gf_end_mjd' in gs.colnames):
             gs['expend'] = gs['gf_end_mjd']
             
     return gs
