@@ -622,7 +622,7 @@ def query_guidestar_log(mjd=None, program=None, exp_type=['FGS_FINEGUIDE']):
         filters += make_program_filter([program])
         
     if mjd is not None:
-        filters += make_query_filter('gf_start_mjd', range=mjd)
+        filters += make_query_filter('datastrt', range=mjd)
     
     gs = query_jwst(instrument='GS',
                          columns='*',
@@ -630,11 +630,11 @@ def query_guidestar_log(mjd=None, program=None, exp_type=['FGS_FINEGUIDE']):
                          extensions=['cal'])
     
     if len(gs) > 0:
-        if ('expstart' not in gs.colnames) & ('gf_start_mjd' in gs.colnames):
-            gs['expstart'] = gs['gf_start_mjd']
+        if ('expstart' not in gs.colnames) & ('datastrt' in gs.colnames):
+            gs['expstart'] = gs['datastrt']
 
-        if ('expend' not in gs.colnames) & ('gf_end_mjd' in gs.colnames):
-            gs['expend'] = gs['gf_end_mjd']
+        if ('expend' not in gs.colnames) & ('dataend' in gs.colnames):
+            gs['expend'] = gs['dataend']
             
     return gs
 
