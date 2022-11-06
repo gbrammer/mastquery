@@ -35,6 +35,7 @@ else:
 # version = "1.3" # polystr
 # version = "1.4" # force_rate in fetch
 # version = "1.5" # guide star query in jwst.query_guidestar_log
+version = "1.5.1" # bug fix for pip versioning
 
 # Set this to true to add install_requires to setup
 # Turned off for incremental builds as it kills "reload(mastquery.query)" 
