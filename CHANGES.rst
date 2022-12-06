@@ -52,3 +52,7 @@
 1.5.1
 -----
 -  bug fix for pip versioning
+
+1.6.0
+-----
+- new setup 
