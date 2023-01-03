@@ -11,6 +11,16 @@ import logging
 import numpy as np
 import yaml
 
+import json
+
+from tqdm import tqdm
+import astropy.table
+import astropy.time
+
+from shapely.geometry import Point
+
+from sregion import SRegion, patch_from_polygon
+
 try:
     import pysiaf
 except ImportError:
@@ -240,7 +250,6 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
         Query result
         
     """                        
-    import astropy.table
         
     log = logging.getLogger()
     log.debug('kwargs')
@@ -278,7 +287,6 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
     
     if rd is not None:
         from grizli import utils
-        from shapely.geometry import Point
         
         if len(rd) == 2:
             # Contains point
@@ -341,9 +349,7 @@ def fix_jwst_sregions(res):
     """
     Fix s_region polygons based on pointing keywords, mostly for MIRIM_FULL
     """
-    from tqdm import tqdm
     import pysiaf
-    from sregion import SRegion
 
     siaf = {}
     for ins in ['MIRI','NIRISS','NIRCAM','NIRSPEC','FGS']:
@@ -413,7 +419,6 @@ def set_missing_footprints(res):
     """
     Set missing s_region entries, mostly NIRISS
     """
-    from sregion import SRegion
     log = logging.getLogger()
     log.debug(f'N = {len(res)}')
     
@@ -438,7 +443,6 @@ def set_footprint_centroids(res):
     """
     Set ra/dec to s_region centroid
     """
-    from sregion import SRegion
     log = logging.getLogger()
     log.debug(f'N = {len(res)}')
 
@@ -517,14 +521,11 @@ def match_dataportal_columns(res):
 def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal'], verbose=True):
     """
     Query 
-    """
-    import json
-    import astropy.time
-    
+    """    
     log = logging.getLogger()
     
-    from mastquery.utils import mastQuery, mastJson2Table
-    from mastquery.utils import new_mastJson2Table, new_mast_query
+    from .utils import mastQuery, mastJson2Table
+    from .utils import new_mastJson2Table, new_mast_query
         
     if recent_days is not None:
         now = astropy.time.Time.now().mjd

@@ -5,52 +5,34 @@ Scripts to find overlapping HST data
 import time
 import os
 import yaml
-
+import copy
 import traceback
 import inspect
+import glob
+from collections import OrderedDict
 
-from sregion import SRegion
+import numpy as np
+from tqdm import tqdm
+
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
+
+from astropy.table import Table
+from astropy import units as u
+from astropy.coordinates import angles
+
+from shapely.geometry import Polygon, Point
+
+from sregion import SRegion, patch_from_polygon
+
 from . import query, utils
 from .plot_utils import draw_axis_labels, insert_legacysurveys_thumbnail
 
 TQDM_MIN = 2000
 
-def test():
-    
-    import copy
-    
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    from shapely.geometry import Polygon
-    #from descartes import PolygonPatch
-    
-    from hsaquery import query
-    from hsaquery.query import parse_polygons
-
-    
-    # Example: high-z cluster pointings
-    tab = query.run_query(box=None, proposid=[14594], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['G102','G141'], extra=[])
-    
-    # Ebeling
-    tab = query.run_query(box=None, proposid=[15132,14098,13671,12884,12166,11103,10875,], instruments=['WFC3-IR'], extensions=['FLT'], filters=[], extra=[])
-    # Relics
-    tab = query.run_query(box=None, proposid=[14096], instruments=['WFC3-IR'], extensions=['FLT'], filters=[], extra=[])
-    tab = query.run_query(box=None, proposid=[11591], instruments=['WFC3-iR'], extensions=['FLT'], filters=[], extra=[])
-    tab = query.run_query(box=None, proposid=[13666,14148,14496], instruments=['WFC3-IR'], extensions=['FLT'], filters=[], extra=[])
-    tab = tab[tab['target'] != 'ANY']
-    
-    # MACS 0454
-    box = [73.5462181, -3.0147200, 3]
-    tab = query.run_query(box=box, proposid=[], instruments=['WFC3-IR', 'ACS-WFC'], extensions=['FLT'], filters=['F110W'], extra=[])
-
-
 def parse_overlap_polygons(polygons, fractional_overlap=0, verbose=2):
     """
     """
-    import copy
-    import numpy as np
-    from tqdm import tqdm
     
     match_poly = [polygons[0]]
     match_ids = [[0]]
@@ -202,17 +184,6 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         List of grouped tables (`~astropy.table.Table`).
 
     """
-    import copy
-    
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    from astropy.table import Table
-
-    from shapely.geometry import Polygon, Point
-    #from descartes import PolygonPatch
-    from sregion import patch_from_polygon
-    import time
     # Get shapely polygons for each exposures
     polygons = []
     
@@ -617,8 +588,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
 
 
 def summary_table(tabs=None, output='overlap_summary'):
-    import glob
-    from collections import OrderedDict
+
     from astropy.table import Table
     import astropy.table
     from mastquery.overlaps import parse_overlap_table
@@ -724,9 +694,7 @@ def parse_overlap_table(tab):
         List of extracted properties.
         
     """
-    import numpy as np
-    from shapely.geometry import Polygon
-    from mastquery import query# as mutils
+    from . import query# as mutils
     
     query.set_transformed_coordinates(tab)
     
@@ -827,12 +795,6 @@ def split_associations(tab, force_split=False, root=None, assoc_args=ASSOC_ARGS,
     assoc_args passed directly to `compute_associations`.
     
     """ 
-    from collections import OrderedDict
-            
-    import numpy as np
-    
-    from shapely.geometry import Polygon
-        
     if root is None:
         root = tab.meta['NAME']
     
@@ -925,17 +887,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
     ls_args : dict
         Arguments to 
         
-    """
-    import numpy as np
-    
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import MultipleLocator
-    #from descartes import PolygonPatch
-    
-    from astropy import units as u
-    from astropy.coordinates import angles
-    from sregion import patch_from_polygon
-    
+    """    
     #cc = plt.rcParams['axes.prop_cycle']
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     
@@ -1187,9 +1139,6 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
     """
     from . import query
     
-    import numpy as np
-    from shapely.geometry import Point
-    
     cosd = np.cos(tab['dec']/180*np.pi)
     dx = (tab['ra'] - np.median(tab['ra']))*cosd*60    
     dy = (tab['dec'] - np.median(tab['dec']))*60
@@ -1316,31 +1265,20 @@ def compute_associations(tab, max_sep=0.5, max_pa=0.05, max_time=1e4/86400., mat
                     new_i += 1
                 
     tab['assoc_idx'] = assoc_idx
-    
-    if False:
-        from mastquery import overlaps
-        assoc = 48
-        sel = tab['assoc_idx'] == assoc
-        tabs = overlaps.find_overlaps(tab[sel], use_parent=True, buffer_arcmin=0.1, filters=['F814W'], proposal_id=[], instruments=['ACS/WFC'], close=False, suffix='-f606w-{0:02d}'.format(assoc))
 
 
 def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r', rerun_query=True, query_kwargs={'public':False, 'science':False, 'get_html_version':True}):
     """
     Query ESO archive around the HST data
     """
-    import time
     import urllib
-    import numpy as np
-    import matplotlib.pyplot as plt
-    
+
     from astropy.table import Table
     from astropy.time import Time
-    import astropy.units as u
     from astropy.coordinates import SkyCoord
     
     from shapely.geometry import Polygon, Point
     #from descartes import PolygonPatch
-    from sregion import patch_from_polygon
     
     from astroquery.eso import Eso
     eso = Eso()
@@ -1487,7 +1425,6 @@ def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
     
     from shapely.geometry import Polygon
     #from descartes import PolygonPatch
-    from sregion import patch_from_polygon
     
     from astroquery.alma import Alma
     from astroquery.alma import utils as alma_utils
@@ -1641,7 +1578,6 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
     
     from shapely.geometry import Polygon
     #from descartes import PolygonPatch
-    from sregion import patch_from_polygon
            
     if False:
         tab = utils.read_catalog('j021744m0346_footprint.fits')
