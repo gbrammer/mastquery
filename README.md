@@ -3,10 +3,10 @@ User-friendly tools for using the MAST Mashup API (https://mast.stsci.edu/api/v0
 
 ## Installation:
 
-    # From PIP [not available yet]
-    # pip install mastquery
+    # From PIP
+    pip install mastquery
     
-    # Latest version of the respository
+    # *OR* from latest version of the respository
     git clone https://github.com/gbrammer/mastquery.git
     cd mastquery
     python setup.py install
