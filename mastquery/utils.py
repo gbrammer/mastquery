@@ -618,7 +618,7 @@ def polygon_to_sregion(poly):
     Convert `shapely.Polygon` vertices to an SREGION string
     """
     try:
-        xy = np.array(poly.boundary.xy).T.flatten()
+        xy = np.array(poly.exterior.xy).T.flatten()
     except:
         xy = np.array(poly.convex_hull.boundary.xy).T.flatten()
     
@@ -633,7 +633,8 @@ def sregion_to_polygon(pstr):
     coo = np.cast[float](pstr.lower().strip('polygon(').strip(')').split(','))
     poly = Polygon(coo.reshape(-1,2))
     return poly
-    
+
+
 def radec_to_targname(ra=0, dec=0, round_arcsec=(4, 60), precision=2, targstr='j{rah}{ram}{ras}{sign}{ded}{dem}', header=None):
     """Turn decimal degree coordinates into a string with rounding.
     

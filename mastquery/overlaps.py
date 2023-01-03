@@ -23,7 +23,7 @@ def test():
     import matplotlib.pyplot as plt
 
     from shapely.geometry import Polygon
-    from descartes import PolygonPatch
+    #from descartes import PolygonPatch
     
     from hsaquery import query
     from hsaquery.query import parse_polygons
@@ -210,8 +210,8 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
     from astropy.table import Table
 
     from shapely.geometry import Polygon, Point
-    from descartes import PolygonPatch
-        
+    #from descartes import PolygonPatch
+    from sregion import patch_from_polygon
     import time
     # Get shapely polygons for each exposures
     polygons = []
@@ -517,7 +517,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
         # Show the parent table
         if show_parent:
             if poly_query:
-                ax.add_patch(PolygonPatch(p, alpha=parent_alpha))
+                ax.add_patch(patch_from_polygon(p, alpha=parent_alpha))
             else:
                 colors = query.show_footprints(tab[idx], ax=ax, alpha=parent_alpha, bad_area=bad_area)
                 
@@ -534,7 +534,7 @@ def find_overlaps(tab, buffer_arcmin=1., filters=[], instruments=['WFC3/IR', 'WF
             continue
             
         if patch_alpha > 0:
-            patch1 = PolygonPatch(p, fc=BLUE, ec=BLUE, 
+            patch1 = patch_from_polygon(p, fc=BLUE, ec=BLUE,
                                   alpha=patch_alpha, zorder=2)
         
             ax.plot(xy[0], xy[1], alpha=patch_alpha, color=BLUE)
@@ -930,11 +930,12 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
     
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator
-    from descartes import PolygonPatch
+    #from descartes import PolygonPatch
     
     from astropy import units as u
     from astropy.coordinates import angles
-
+    from sregion import patch_from_polygon
+    
     #cc = plt.rcParams['axes.prop_cycle']
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     
@@ -1059,7 +1060,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                     piter = [p]
                 
                 for pi in piter:
-                    patch = PolygonPatch(pi,
+                    patch = patch_from_polygon(pi,
                                          alpha=0.2**(not with_ls_thumbnail)/2,
                                          fc=fc, ec=c_i,
                                          label=None, zorder=zo)
@@ -1087,7 +1088,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                     piter = [p]
                 
                 for pi in piter:
-                    patch = PolygonPatch(pi, alpha=alpha, fc=fc, ec=c_i,
+                    patch = patch_from_polygon(pi, alpha=alpha, fc=fc, ec=c_i,
                                      label=label, zorder=zo)
             
                     pat = ax.add_patch(patch)
@@ -1129,7 +1130,7 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                 piter = [grism_patches[g]]
             
             for pi in piter:
-                patch = PolygonPatch(pi, alpha=alpha, fc=fc, ec=ec,
+                patch = patch_from_polygon(pi, alpha=alpha, fc=fc, ec=ec,
                                  label=label, zorder=100)
         
                 pat = ax.add_patch(patch)
@@ -1338,7 +1339,8 @@ def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
     from astropy.coordinates import SkyCoord
     
     from shapely.geometry import Polygon, Point
-    from descartes import PolygonPatch
+    #from descartes import PolygonPatch
+    from sregion import patch_from_polygon
     
     from astroquery.eso import Eso
     eso = Eso()
@@ -1409,7 +1411,7 @@ def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
                 else:
                     p_hst = p_hst.union(p_j)
 
-        ax.add_patch(PolygonPatch(p_hst, ec='k', fc='None', 
+        ax.add_patch(patch_from_polygon(p_hst, ec='k', fc='None', 
                               alpha=0.8, label='HST'))
         
         band_labels = []
@@ -1438,12 +1440,12 @@ def muse_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
                     band_labels.append(res['INS MODE'][i])
                     label = '{0}'.format(res['INS MODE'][i])
                     
-                ax.add_patch(PolygonPatch(fp_j, ec=color, fc='None', 
+                ax.add_patch(patch_from_polygon(fp_j, ec=color, fc='None', 
                                       alpha=0.8, label=label, 
                                       linestyle=linestyle))
                 
                 if is_public[i]:
-                    ax.add_patch(PolygonPatch(fp_j, ec=color, fc=color, 
+                    ax.add_patch(patch_from_polygon(fp_j, ec=color, fc=color, 
                                           alpha=0.1+0.1*is_public[i]))
                                    
         ax.grid()
@@ -1484,7 +1486,8 @@ def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
     from astropy.coordinates import SkyCoord
     
     from shapely.geometry import Polygon
-    from descartes import PolygonPatch
+    #from descartes import PolygonPatch
+    from sregion import patch_from_polygon
     
     from astroquery.alma import Alma
     from astroquery.alma import utils as alma_utils
@@ -1555,7 +1558,7 @@ def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
                 else:
                     p_hst = p_hst.union(p_j)
 
-        ax.add_patch(PolygonPatch(p_hst, ec='k', fc='None', 
+        ax.add_patch(patch_from_polygon(p_hst, ec='k', fc='None', 
                               alpha=0.8, label='HST'))
         
         band_labels = []
@@ -1585,12 +1588,12 @@ def alma_query(tab, make_figure=True, xsize=5, nlabel=3, min_size=4, cmap='jet_r
                     band_labels.append(res['Band'][i])
                     label = 'Band {0}'.format(res['Band'][i])
                     
-                ax.add_patch(PolygonPatch(fp_j, ec=color, fc='None', 
+                ax.add_patch(patch_from_polygon(fp_j, ec=color, fc='None', 
                                       alpha=0.8, label=label, 
                                       linestyle=linestyle))
                 
                 if is_mosaic & is_public[i]:
-                    ax.add_patch(PolygonPatch(fp_j, ec=color, fc=color, 
+                    ax.add_patch(patch_from_polygon(fp_j, ec=color, fc=color, 
                                           alpha=0.1+0.1*is_public[i]))
                                    
         ax.grid()
@@ -1637,8 +1640,9 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
     from astropy.time import Time
     
     from shapely.geometry import Polygon
-    from descartes import PolygonPatch
-            
+    #from descartes import PolygonPatch
+    from sregion import patch_from_polygon
+           
     if False:
         tab = utils.read_catalog('j021744m0346_footprint.fits')
         tab = utils.read_catalog('j224324m0936_footprint.fits')
@@ -1801,8 +1805,9 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
                 with_hst[j] = p_hst.intersection(fp_j).area > 0
                 if with_hst[j]:
                     fp_i_hst = fp_i_hst.union(fp_j)
-                    ax.add_patch(PolygonPatch(fp_j, ec=colors[i], fc='None', 
-                                          alpha=0.05))
+                    ax.add_patch(patch_from_polygon(fp_j, ec=colors[i],
+                                                    fc='None', 
+                                                    alpha=0.05))
                     
                 fp_i = fp_i.union(fp_j)
              
@@ -1812,19 +1817,21 @@ def spitzer_query(tab, level=1, make_figure=True, cmap='Spectral', xsize=6, nlab
             label = '{0} - {1:3.1f}/{2:3.1f} hr'.format(mode_i['short'], mode_i['exptime']/3600., ipac['exposuretime'][m][with_hst].sum()/3600.)
             
             if mode_i['short'] in ['IRAC36', 'IRAC45']:
-                ax.add_patch(PolygonPatch(fp_i_hst, ec=colors[i],
+                ax.add_patch(patch_from_polygon(fp_i_hst, ec=colors[i],
                                           fc=colors[i], 
                                           alpha=0.2, label=label))
                 
-                ax.add_patch(PolygonPatch(fp_i, ec=colors[i], fc=colors[i], 
+                ax.add_patch(patch_from_polygon(fp_i,
+                                      ec=colors[i], fc=colors[i], 
                                       alpha=0.05, label=label))
                 
             else:
-                ax.add_patch(PolygonPatch(fp_i, ec=colors[i], fc='None', 
+                ax.add_patch(patch_from_polygon(fp_i,
+                                      ec=colors[i], fc='None', 
                                       alpha=0.8, label=label, 
                                       linestyle='--'))
                 
-        ax.add_patch(PolygonPatch(p_hst, ec='k', fc='None', 
+        ax.add_patch(patch_from_polygon(p_hst, ec='k', fc='None', 
                               alpha=0.8, label='HST'))
                
         ax.grid()
