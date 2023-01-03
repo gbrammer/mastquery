@@ -8,7 +8,8 @@ def draw_axis_labels(ax=None, nlabel=3, format='latex'):
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator, FixedLocator
-    from descartes import PolygonPatch
+    #from descartes import PolygonPatch
+    from sregion import patch_from_polygon
     
     from astropy import units as u
     from astropy.coordinates import angles
