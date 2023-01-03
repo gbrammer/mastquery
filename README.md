@@ -9,7 +9,7 @@ User-friendly tools for using the MAST Mashup API (https://mast.stsci.edu/api/v0
     # *OR* from latest version of the respository
     git clone https://github.com/gbrammer/mastquery.git
     cd mastquery
-    python setup.py install
+    pip install . 
     
 ## Demo:
 
