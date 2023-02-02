@@ -12,6 +12,8 @@ import numpy as np
 
 from astropy.table import Table
 
+LOGFILE = 'mastquery.log'
+
 INSTRUMENT_AREAS = {'WFC3/IR':4.5,
                     'WFPC2/WFC':8.,
                     'WFPC2/PC':8.,
@@ -254,7 +256,66 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, **kwargs):
+def split_rateints(file, verbose=True, overwrite=False):
+    """
+    Split a JWST `rateints` file into pseudo `rate` files
+    """
+    import astropy.io.fits as pyfits
+    from astropy.table import Table
+    
+    labels = 'abcdefghijklmnopqrstuvwxyz'
+    
+    ints = pyfits.open(file)
+    if 'INT_TIMES' not in ints:
+        msg = f'mastquery.utils.split_rateints: INT_TIMES not found in {file}, skip'
+        log_comment(LOGFILE, msg, verbose=verbose)
+        return None
+        
+    N = ints[0].header['NINTS']
+    
+    msg = f'mastquery.utils.split_rateints: {file} NINTS={N}'
+    log_comment(LOGFILE, msg, verbose=verbose)
+    
+    times = Table(ints['INT_TIMES'].data)
+    dt = (times['int_end_MJD_UTC'] - times['int_start_MJD_UTC'])*86400
+    
+    out_files = []
+    
+    for i in range(N):
+        out = file.replace('_rateints.fits', '_rate.fits')
+        for inst in ['_nrc','_nis','_mir','_nrs']:
+            out = out.replace(inst, labels[i] + inst)
+        
+        if os.path.exists(out) & (not overwrite):
+            msg = f'mastquery.utils.split_rateints: {i} {out} - skip with overwrite=False'
+            log_comment(LOGFILE, msg, verbose=verbose)
+            out_files.append(out)
+            
+            continue
+            
+        msg = f'mastquery.utils.split_rateints: {i} {out}'
+        log_comment(LOGFILE, msg, verbose=verbose)
+        
+        with pyfits.open(file) as im:
+            for ext in ['SCI','ERR','DQ','VAR_POISSON','VAR_RNOISE']:
+                im[ext].data = im[ext].data[i,:,:]
+            
+            im[0].header['EFFEXPTM'] = dt[i]
+            im[0].header['EXPTIME'] = dt[i]
+            im[0].header['EXPSTART'] = times['int_start_MJD_UTC'][i]
+            im[0].header['EXPEND'] = times['int_end_MJD_UTC'][i]
+            im[0].header['NINTS'] = 1
+            _ = im.pop('INT_TIMES')
+            
+            im.writeto(out, overwrite=True)
+        
+        out_files.append(out)
+        
+    ints.close()
+    return out_files
+
+
+def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, rate_ints=False, **kwargs):
     """
     Download files from MAST API with `astroquery.mast.Observations.download_file`
     
@@ -287,7 +348,10 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
     
     force_rate : bool
         Replace 'cal' with 'rate' in filenames.
-        
+    
+    rate_ints : bool
+        Fetch ``rateints`` files and split into individual ``rate`` files
+    
     Returns
     -------
     resp : dict
@@ -330,6 +394,13 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
         if force_rate:
             _file = _file.replace('_cal','_rate')
             _uri = _uri.replace('_cal','_rate')
+        
+        if rate_ints:
+            _file = _file.replace('_cal','_rate')
+            _uri = _uri.replace('_cal','_rate')
+
+            _file = _file.replace('_rate.fits','_rateints.fits')
+            _uri = _uri.replace('_rate.fits','_rateints.fits')
             
         if path is None:
             out_file = _file
@@ -340,14 +411,32 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
         if os.path.exists(out_file) & (not overwrite):
             log.info(f'{out_file} exists, skip')
             resp[out_file] = ('EXISTS', None, None)
+            
+            if rate_ints == 1:
+                out_rates = split_rateints(out_file, verbose=True)
+                for f in out_rates:
+                    resp[f] = ('EXISTS', None, None)
+            
+                _ = resp.pop(out_file)
+            
             continue
                 
-        # Download the data   
+        # Download the data
+        if _uri.startswith('jw'):
+            _uri = 'mast:JWST/product/'+_uri
+            
         log.info(f"Download: {out_file}")
              
         payload = {"uri":_uri}        
         resp[out_file] = session.download_file(_uri, **kws)
-    
+        
+        if (rate_ints == 1) & os.path.exists(out_file):
+            out_rates = split_rateints(out_file, verbose=True)
+            for f in out_rates:
+                resp[f] = ('COMPLETE', None, None)
+            
+            _ = resp.pop(out_file)
+            
     return resp
 
 
@@ -517,6 +606,7 @@ def set_warnings(numpy_level='ignore', astropy_level='ignore'):
     np.seterr(all=numpy_level)
     warnings.simplefilter(astropy_level, category=AstropyWarning)
 
+
 #########
 # Logging
 #########
@@ -553,7 +643,8 @@ def log_function_arguments(LOGFILE, frame, func='func', verbose=True):
     logstr = logstr.format(func, args)
     msg = log_comment(LOGFILE, logstr, verbose=verbose, show_date=True)
     return msg
-    
+
+
 def log_comment(LOGFILE, comment, verbose=False, show_date=False, mode='a'):
     """
     Log a message to a file, optionally including a date tag
@@ -574,8 +665,9 @@ def log_comment(LOGFILE, comment, verbose=False, show_date=False, mode='a'):
         fp.close()
     
     if verbose:
-        print(msg)
-        
+        print(msg[:-1])
+
+
 def log_exception(LOGFILE, traceback, verbose=True, mode='a'):
     """
     Log exception information to a file, or print to screen
