@@ -256,16 +256,15 @@ def new_mastJson2Table(query_content):
         return tabs
 
 
-def split_rateints(file, verbose=True, overwrite=False):
+def split_rateints(file, verbose=True, overwrite=False, sigma_clip=4):
     """
-    Split a JWST `rateints` file into pseudo `rate` files
+    Combine integrations in a ``rateints`` file with sigma clipping
     """
     import astropy.io.fits as pyfits
     from astropy.table import Table
-    
-    labels = 'abcdefghijklmnopqrstuvwxyz'
-    
+
     ints = pyfits.open(file)
+    
     if 'INT_TIMES' not in ints:
         msg = f'mastquery.utils.split_rateints: INT_TIMES not found in {file}, skip'
         log_comment(LOGFILE, msg, verbose=verbose)
@@ -273,46 +272,119 @@ def split_rateints(file, verbose=True, overwrite=False):
         
     N = ints[0].header['NINTS']
     
-    msg = f'mastquery.utils.split_rateints: {file} NINTS={N}'
+    msg = f'mastquery.utils.split_rateints: {file} NINTS={N} sigma_clip={sigma_clip}'
     log_comment(LOGFILE, msg, verbose=verbose)
     
-    times = Table(ints['INT_TIMES'].data)
-    dt = (times['int_end_MJD_UTC'] - times['int_start_MJD_UTC'])*86400
+    out = file.replace('_rateints.fits', '_rate.fits')
     
-    out_files = []
+    # Array copies
+    sci = ints['SCI'].data*1
+    dq = ints['DQ'].data*1
+    err = ints['ERR'].data*1
+    var_poisson = ints['VAR_POISSON'].data*1
+    var_rnoise = ints['var_rnoise'].data*1
     
+    ivar = 1/err**2
+    
+    mask = (dq & 1025) == 0
+    sci[~mask] = np.nan
+    ivar[~mask] = 0.
+    
+    ### sigma-clipping
+    med = np.nanmedian(sci, axis=0)
+    clip = (sci - med)*np.sqrt(ivar) > sigma_clip
+    ivar[clip] = 0
+    sci[~mask | clip] = 0
+    
+    ### Weighted combination
+    num = np.nansum(sci*ivar, axis=0)
+    den = np.nansum(ivar, axis=0)
+    avg = num/den
+    err = 1/np.sqrt(den)
+    
+    ### Update variances
+    var_poisson[~mask | clip] = np.nan
+    var_rnoise[~mask | clip] = np.nan
+    var_poisson = 1/np.nansum(1./var_poisson, axis=0)
+    var_rnoise = 1/np.nansum(1./var_rnoise, axis=0)
+    
+    ### Combined DQ 
+    dqe = dq[0,:,:]*(~mask | clip)[0,:,:]
     for i in range(N):
-        out = file.replace('_rateints.fits', '_rate.fits')
-        for inst in ['_nrc','_nis','_mir','_nrs']:
-            out = out.replace(inst, labels[i] + inst)
-        
-        if os.path.exists(out) & (not overwrite):
-            msg = f'mastquery.utils.split_rateints: {i} {out} - skip with overwrite=False'
-            log_comment(LOGFILE, msg, verbose=verbose)
-            out_files.append(out)
-            
-            continue
-            
-        msg = f'mastquery.utils.split_rateints: {i} {out}'
-        log_comment(LOGFILE, msg, verbose=verbose)
-        
-        with pyfits.open(file) as im:
-            for ext in ['SCI','ERR','DQ','VAR_POISSON','VAR_RNOISE']:
-                im[ext].data = im[ext].data[i,:,:]
-            
-            im[0].header['EFFEXPTM'] = dt[i]
-            im[0].header['EXPTIME'] = dt[i]
-            im[0].header['EXPSTART'] = times['int_start_MJD_UTC'][i]
-            im[0].header['EXPEND'] = times['int_end_MJD_UTC'][i]
-            im[0].header['NINTS'] = 1
-            _ = im.pop('INT_TIMES')
-            
-            im.writeto(out, overwrite=True)
-        
-        out_files.append(out)
-        
+        dqe |= dq[i,:,:]*(~mask | clip)[i,:,:]
+    
+    ### valid data
+    valid = np.isfinite(avg + err + var_poisson + var_rnoise)
+    avg[~valid] = 0
+    err[~valid] = 0
+    var_poisson[~valid] = 0
+    var_rnoise[~valid] = 0
+    dqe[~valid] |= 1
+    
+    ### Update FITS arrays and header
+    ints['SCI'].data = avg
+    ints['ERR'].data = err
+    ints['DQ'].data = dqe
+    ints['VAR_POISSON'].data = var_poisson
+    ints['VAR_RNOISE'].data = var_rnoise
+    
+    ints[0].header['DATAMODL'] = 'ImageModel'
+    ints[0].header['FILENAME'] = out
+    
+    ints.writeto(out, overwrite=True)
     ints.close()
-    return out_files
+    
+    return [out]
+    
+    # # variances
+    # for i in range(N):
+    #     for inst in ['_nrc','_nis','_mir','_nrs']:
+    #         out = out.replace(inst, labels[i] + inst)
+    #
+    #     if os.path.exists(out) & (not overwrite):
+    #         msg = f'mastquery.utils.split_rateints: {i} {out} - skip with overwrite=False'
+    #         log_comment(LOGFILE, msg, verbose=verbose)
+    #         out_files.append(out)
+    #
+    #         continue
+    #
+    #     msg = f'mastquery.utils.split_rateints: {i} {out}'
+    #     log_comment(LOGFILE, msg, verbose=verbose)
+    #
+    #     with pyfits.open(file) as im:
+    #         for ext in ['SCI','ERR','DQ','VAR_POISSON','VAR_RNOISE']:
+    #             im[ext].data = im[ext].data[i,:,:]
+    #
+    #         im[0].header['DATAMODL'] = 'ImageModel'
+    #         im[0].header['FILENAME'] = out
+    #
+    #         im[0].header['EFFEXPTM'] = dt[i]
+    #         im[0].header['EXPTIME'] = dt[i]
+    #
+    #         im[0].header['EXPSTART'] = times['int_start_MJD_UTC'][i]
+    #         im[0].header['EXPEND'] = times['int_end_MJD_UTC'][i]
+    #         im[0].header['NINTS'] = 1
+    #
+    #         im[1].header['MJD-BEG'] = times['int_start_MJD_UTC'][i]
+    #         im[1].header['MJD-AVG'] = times['int_mid_MJD_UTC'][i]
+    #         im[1].header['MJD-END'] = times['int_end_MJD_UTC'][i]
+    #
+    #         im[1].header['TDB-BEG'] = times['int_start_BJD_TDB'][i]
+    #         im[1].header['TDB-MID'] = times['int_mid_BJD_TDB'][i]
+    #         im[1].header['TDB-END'] = times['int_end_BJD_TDB'][i]
+    #         im[1].header['XPOSURE'] = dt[i]
+    #         im[1].header['TELAPSE'] = dt[i]
+    #
+    #         # hdul = pyfits.HDUList(im[0])
+    #         # for ext in ['SCI','ERR','DQ','VAR_POISSON','VAR_RNOISE','ASDF']:
+    #         #     hdul.append(im[ext])
+    #
+    #         im.writeto(out, overwrite=True)
+    #
+    #     out_files.append(out)
+    #
+    # ints.close()
+    # return out_files
 
 
 def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, rate_ints=False, **kwargs):
