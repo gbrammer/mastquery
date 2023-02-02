@@ -4,10 +4,14 @@ import matplotlib.pyplot as plt
 
 from .. import query, overlaps
 
+QUERY = None
+
 def test_query():
     """
     Test basic query
     """
+    global QUERY
+    
     _res = query.run_query(proposal_id=[11359], filters=['G141'])
     assert(len(_res) == 1)
     
@@ -25,16 +29,19 @@ def test_query():
     
     for file in files:
         os.remove(file)
-        
-    return _res
+    
+    QUERY = _res
 
 def test_products():
     """
     Get products info
     """
-    _res = test_query()
-    _prod = query.get_products_table(_res, extensions=['RAW'], 
-                                     use_astroquery=True)
-    assert(len(_prod) == 4)
+    global QUERY
+    
+    if QUERY is not None:
+        _prod = query.get_products_table(QUERY, extensions=['RAW'], 
+                                         use_astroquery=True)
+        
+        assert(len(_prod) == 4)
     
     
