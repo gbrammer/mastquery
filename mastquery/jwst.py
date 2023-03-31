@@ -436,7 +436,15 @@ def set_missing_footprints(res):
 
             if test:
                 #use previous footprint for GRISM
-                res[i]['s_region'] = sprev[res['instrume'][i]]
+                try:
+                    res[i]['s_region'] = sprev[res['instrume'][i]]
+                except:
+                    # Can fail e.g. for PASSAGE with grism-only visits
+                    # make a circle with radius 1 arcmin
+                    _ra, _dec = res['targ_ra'][i], res['targ_dec'][i]
+                    dummy = f"CIRCLE {_ra:.6f} {_dec:.6f} 0.017"
+                    res[i]['s_region'] = dummy
+                    
                 pass
 
 def set_footprint_centroids(res):
