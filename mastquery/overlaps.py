@@ -878,7 +878,7 @@ LS_ARGS = dict(pixscale=1,
                grayscale=False,
                grayscale_params=[99, 1.5, -0.02])
 
-def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True, force_fill=False, with_ls_thumbnail=False, ls_args=LS_ARGS, **kwargs):
+def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlabel=3, fill_grism=True, force_fill=False, with_ls_thumbnail=False, ls_args=LS_ARGS, db_query_str=None, pad_arcmin=1, **kwargs):
     """Make a figure to show associations
     
     with_ls_thumbnail : bool
@@ -1091,7 +1091,50 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                 handles.append(pat)
                 labels.append(label)
                 filter_list.append(filt_i)
+    
+    try:
+        from grizli.aws import db
+    except:
+        print('db_query_str specified but `from grizli.aws import db` failed!')
+        db_query_str = None
+    
+    if db_query_str is not None:
+        # "filter in ('F160W','F115W-CLEAR','F444W-CLEAR') OR instrume in ('NIRISS')"
+        
+        pt = f"point({tab.meta['RA']:.5f}, {tab.meta['DEC']:.5f})"
+        sr = SRegion(tab.meta['SREGION'][0])
+
+        R = np.sqrt(2*sr.sky_area()[0]).value
+        
+        _sql = f"""
+SELECT file, filter, instrume, footprint, crval1, crval2
+    FROM exposure_files
+    WHERE polygon(footprint) && polygon(circle({pt}, {R/60.:.3f}))
+    AND {db_query_str}"""
+        
+        dbfp = db.SQL(_sql)
+        
+        if len(dbfp) > 0:
+            print(f'{len(dbfp)} rows found for query: {_sql}')
             
+            for fp, insi, fi in zip(dbfp['footprint'], dbfp['instrume'], dbfp['filter']):
+                sr = SRegion(fp)
+                if insi in ('NIRCAM', 'NIRISS','MIRI'):
+                    zo=-10
+                    c = 'olive'
+                    al = 0.2
+                else:
+                    if fi in ('F160W'):
+                        c = 'lightsteelblue'
+                    else:
+                        c = 'skyblue'
+                        
+                    zo=-100
+                    al = 0.05
+
+                for p in sr.patch(ec='None', fc=c,alpha=al, zorder=zo):
+                    ax.add_patch(p)
+    
     ax.legend(handles, labels, fontsize=7, 
               ncol=int(np.minimum(len(labels), 4)), loc='upper right')
     
@@ -1099,8 +1142,8 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
 
     cosd = np.cos(tab.meta['DEC']/180*np.pi)
 
-    xra += 1/60/cosd*np.array([-1,1])
-    yra += 1/60*np.array([-1,1])
+    xra += pad_arcmin/60/cosd*np.array([-1,1])
+    yra += pad_arcmin/60*np.array([-1,1])
     ax.set_xlim(xra[::-1])
     ax.set_ylim(yra)
     
