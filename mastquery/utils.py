@@ -342,8 +342,11 @@ def download_recalibrated_rate(rate_file, bucket="s3://grizli-v2/reprocess_rate/
     
     These will have been processed with `grizli.aws.recalibrate` and `snowblind`.
     """
+    import logging
     import boto3
     from botocore.exceptions import ClientError
+    
+    log = logging.getLogger()
 
     if path is not None:
         if not os.path.exists(path):
