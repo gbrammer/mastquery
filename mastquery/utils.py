@@ -286,13 +286,13 @@ def split_rateints(file, verbose=True, overwrite=False, sigma_clip=4):
     
     ivar = 1/err**2
     
-    mask = (dq & 1025) == 0
+    mask = (dq & (1+1024+4096)) == 0
     sci[~mask] = np.nan
     ivar[~mask] = 0.
     
     ### sigma-clipping
     med = np.nanmedian(sci, axis=0)
-    clip = (sci - med)*np.sqrt(ivar) > sigma_clip
+    clip = np.abs(sci - med)*np.sqrt(ivar) > sigma_clip
     ivar[clip] = 0
     sci[~mask | clip] = 0
     
@@ -335,59 +335,74 @@ def split_rateints(file, verbose=True, overwrite=False, sigma_clip=4):
     ints.close()
     
     return [out]
+
+
+def download_recalibrated_rate(rate_file, bucket="s3://grizli-v2/reprocess_rate/", path=None, verbose=True, overwrite=True, **kwargs):
+    """Get recalibrated rate file if available.
     
-    # # variances
-    # for i in range(N):
-    #     for inst in ['_nrc','_nis','_mir','_nrs']:
-    #         out = out.replace(inst, labels[i] + inst)
-    #
-    #     if os.path.exists(out) & (not overwrite):
-    #         msg = f'mastquery.utils.split_rateints: {i} {out} - skip with overwrite=False'
-    #         log_comment(LOGFILE, msg, verbose=verbose)
-    #         out_files.append(out)
-    #
-    #         continue
-    #
-    #     msg = f'mastquery.utils.split_rateints: {i} {out}'
-    #     log_comment(LOGFILE, msg, verbose=verbose)
-    #
-    #     with pyfits.open(file) as im:
-    #         for ext in ['SCI','ERR','DQ','VAR_POISSON','VAR_RNOISE']:
-    #             im[ext].data = im[ext].data[i,:,:]
-    #
-    #         im[0].header['DATAMODL'] = 'ImageModel'
-    #         im[0].header['FILENAME'] = out
-    #
-    #         im[0].header['EFFEXPTM'] = dt[i]
-    #         im[0].header['EXPTIME'] = dt[i]
-    #
-    #         im[0].header['EXPSTART'] = times['int_start_MJD_UTC'][i]
-    #         im[0].header['EXPEND'] = times['int_end_MJD_UTC'][i]
-    #         im[0].header['NINTS'] = 1
-    #
-    #         im[1].header['MJD-BEG'] = times['int_start_MJD_UTC'][i]
-    #         im[1].header['MJD-AVG'] = times['int_mid_MJD_UTC'][i]
-    #         im[1].header['MJD-END'] = times['int_end_MJD_UTC'][i]
-    #
-    #         im[1].header['TDB-BEG'] = times['int_start_BJD_TDB'][i]
-    #         im[1].header['TDB-MID'] = times['int_mid_BJD_TDB'][i]
-    #         im[1].header['TDB-END'] = times['int_end_BJD_TDB'][i]
-    #         im[1].header['XPOSURE'] = dt[i]
-    #         im[1].header['TELAPSE'] = dt[i]
-    #
-    #         # hdul = pyfits.HDUList(im[0])
-    #         # for ext in ['SCI','ERR','DQ','VAR_POISSON','VAR_RNOISE','ASDF']:
-    #         #     hdul.append(im[ext])
-    #
-    #         im.writeto(out, overwrite=True)
-    #
-    #     out_files.append(out)
-    #
-    # ints.close()
-    # return out_files
+    These will have been processed with `grizli.aws.recalibrate` and `snowblind`.
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+
+    if path is not None:
+        if not os.path.exists(path):
+            log.info(f'mkdir {path}')
+            os.makedirs(path)
+            local_file = os.path.join(path, rate_file)
+    else:
+        path = './'
+        local_file = rate_file
+    
+    if (not overwrite) & os.path.exists(local_file):
+        msg = f'download_recalibrated_rate: {local_file} file found'
+        _ = log_comment(LOGFILE, msg, verbose=verbose)
+        return local_file
+    
+    # Check if requested file is in the s3 bucket
+    index_file = os.path.join(bucket.replace('s3://', 'https://s3.amazonaws.com/'),
+                              'index.csv')
+    try:
+        filelist = Table.read(index_file, format='csv')
+    except FileNotFoundError:
+        msg = f'download_recalibrated_rate: index {index_file} not found'
+        _ = log_comment(LOGFILE, msg, verbose=verbose)
+        return None
+    
+    if rate_file not in filelist['file']:
+        msg = f'download_recalibrated_rate: {rate_file} not in {index_file}'
+        _ = log_comment(LOGFILE, msg, verbose=verbose)
+        return None
+    
+    # Try to download it
+    s3 = boto3.resource('s3')
+    
+    bkt_name = bucket.replace('s3://','').split('/')[0]
+    bkt_prefix = '/'.join(bucket.replace('s3://','').split('/')[1:])
+    
+    bkt = s3.Bucket(bkt_name)
+    
+    s3_prefix = os.path.join(bkt_prefix, rate_file)
+    
+    msg = f"download_recalibrated_rate: download s3://{bkt_name}/{s3_prefix} > {local_file}"
+    log_comment(LOGFILE, msg, verbose=verbose)
+                
+    try:
+        bkt.download_file(s3_prefix, local_file, Callback=None, Config=None)
+    except ClientError:
+        msg = f"download_recalibrated_rate: download failed with ClientError"
+        log_comment(LOGFILE, msg, verbose=verbose)
+        return None
+    
+    if not os.path.exists(local_file):
+        msg = f'download_recalibrated_rate: boto3 download but {local_file} not found'
+        log_comment(LOGFILE, msg, verbose=verbose)
+        return None
+    else:
+        return local_file
 
 
-def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, rate_ints=False, **kwargs):
+def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, rate_ints=False, get_recalibrated_rate=False, recalibrated_kwargs={}, **kwargs):
     """
     Download files from MAST API with `astroquery.mast.Observations.download_file`
     
@@ -479,7 +494,16 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
         else:
             out_file = os.path.join(path, os.path.basename(_file))
             kws['local_path'] = out_file
-            
+        
+        if get_recalibrated_rate & _file.endswith('_rate.fits'):
+            status = download_recalibrated_rate(_file,
+                                                path=path,
+                                                verbose=verbose,
+                                                overwrite=overwrite)
+            if (status is not None):
+                resp[out_file] = ('EXISTS', None, None)
+                continue
+        
         if os.path.exists(out_file) & (not overwrite):
             log.info(f'{out_file} exists, skip')
             resp[out_file] = ('EXISTS', None, None)
