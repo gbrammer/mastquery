@@ -481,15 +481,16 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
             _uri = row['dataURL']
 
         _file = os.path.basename(_uri)
+        rate_file = _file.replace('_cal','_rate')
+        rate_file = rate_file.replace('_uncal','_rate')
+        
         if force_rate:
-            _file = _file.replace('_cal','_rate')
+            _file = rate_file
             _uri = _uri.replace('_cal','_rate')
         
         if rate_ints:
-            _file = _file.replace('_cal','_rate')
+            _file = rate_file.replace('_rate.fits','_rateints.fits')
             _uri = _uri.replace('_cal','_rate')
-
-            _file = _file.replace('_rate.fits','_rateints.fits')
             _uri = _uri.replace('_rate.fits','_rateints.fits')
             
         if path is None:
@@ -498,8 +499,8 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
             out_file = os.path.join(path, os.path.basename(_file))
             kws['local_path'] = out_file
         
-        if get_recalibrated_rate & _file.endswith('_rate.fits'):
-            status = download_recalibrated_rate(_file,
+        if get_recalibrated_rate & rate_file.endswith('_rate.fits'):
+            status = download_recalibrated_rate(rate_file,
                                                 path=path,
                                                 verbose=verbose,
                                                 overwrite=overwrite)
