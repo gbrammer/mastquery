@@ -346,8 +346,9 @@ def download_recalibrated_rate(rate_file, bucket="s3://grizli-v2/reprocess_rate/
 
     try:
       import boto3
-    except: 
+    except ImportError: 
       return None
+    
     from botocore.exceptions import ClientError
     
     log = logging.getLogger()
