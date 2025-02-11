@@ -171,9 +171,9 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
         prod_tab = utils.mastJson2Table(outData)
     
     if hasattr(prod_tab['parent_obsid'], 'filled'):
-        obsint = np.cast[int](prod_tab['parent_obsid'].filled('0'))
+        obsint = prod_tab['parent_obsid'].filled('0').astype(int)
     else:
-        obsint = np.cast[int](prod_tab['parent_obsid'])
+        obsint = prod_tab['parent_obsid'].astype(int)
         
     if obsint.sum() == 0:
         print('MAST product database problem with ``parent_obsid``, try one-by-one...')
@@ -199,7 +199,7 @@ def get_products_table(query_tab, extensions=['RAW'], use_astroquery=True):
     
     prod_tab.rename_column('parent_obsid', 'obsid')
     if query_tab['obsid'].dtype != prod_tab['obsid'].dtype:
-        prod_tab['obsid'] = np.cast[query_tab['obsid']](prod_tab['obsid'])
+        prod_tab['obsid'] = prod_tab['obsid'].astype(query_tab['obsid'].dtype)
         
     prod_tab.remove_column('proposal_id')
     prod_tab.rename_column('obs_id', 'observation_id')
@@ -492,10 +492,10 @@ def parse_polygons(polystr):
                 continue
         
         try:
-            poly_i = np.cast[float](spl[ip:]).reshape((-1,2))
+            poly_i = np.array(spl[ip:]).reshape((-1,2)).astype(float)
         except:
             # Circle
-            x0, y0, r0 = np.cast[float](spl[ip:])
+            x0, y0, r0 = spl[ip:].astype(float)
             cosd = np.cos(y0/180*np.pi)
             poly_i = np.array([XCIRCLE*r0/cosd+x0, YCIRCLE*r0+y0]).T
             
