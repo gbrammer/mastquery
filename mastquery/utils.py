@@ -363,10 +363,16 @@ def download_recalibrated_rate(rate_file, bucket="s3://grizli-v2/reprocess_rate/
         return local_file
     
     # Check if requested file is in the s3 bucket
+    local_file = "recalibrated_index.csv"
+    if os.path.exists(local_file):
+        index_file = local_file
+
     index_file = os.path.join(bucket.replace('s3://', 'https://s3.amazonaws.com/'),
                               'index.csv')
     try:
         filelist = Table.read(index_file, format='csv')
+        filelist.write(local_file, overwrite=True)
+
     except FileNotFoundError:
         msg = f'download_recalibrated_rate: index {index_file} not found'
         _ = log_comment(LOGFILE, msg, verbose=verbose)
@@ -405,7 +411,7 @@ def download_recalibrated_rate(rate_file, bucket="s3://grizli-v2/reprocess_rate/
         return local_file
 
 
-def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, rate_ints=False, get_recalibrated_rate=False, recalibrated_kwargs={}, **kwargs):
+def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=True, base_url=None, cloud_only=False, force_rate=False, rate_ints=False, get_recalibrated_rate=False, curl_fallback=True, recalibrated_kwargs={}, **kwargs):
     """
     Download files from MAST API with `astroquery.mast.Observations.download_file`
     
@@ -536,7 +542,16 @@ def download_from_mast(tab, path=None, verbose=True, overwrite=False, use_token=
                 resp[f] = ('COMPLETE', None, None)
             
             _ = resp.pop(out_file)
-            
+
+        if (not os.path.exists(out_file)) & curl_fallback:
+            prefix = "_".join(_file.split("_")[:3])
+
+            curl_command = f'curl  -H "Authorization: token $MAST_TOKEN" -C - -L -X GET "https://mast.stsci.edu/search/jwst/api/v0.1/retrieve_product?product_name={prefix}%2F{_file}" --output "{out_file}" --fail --create-dirs'
+
+            os.system(curl_command)
+            if os.path.exists(out_file):
+                resp[out_file] = ('COMPLETE', None, None)
+
     return resp
 
 
