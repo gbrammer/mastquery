@@ -837,7 +837,7 @@ def sregion_to_polygon(pstr):
     Convert `shapely.Polygon` vertices to an SREGION string
     """
     from shapely.geometry import Polygon
-    coo = np.cast[float](pstr.lower().strip('polygon(').strip(')').split(','))
+    coo = np.array(pstr.lower().strip('polygon(').strip(')').split(',')).astype(float)
     poly = Polygon(coo.reshape(-1,2))
     return poly
 
