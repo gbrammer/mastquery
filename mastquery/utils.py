@@ -368,15 +368,15 @@ def download_recalibrated_rate(rate_file, bucket="s3://grizli-v2/reprocess_rate/
         return local_file
     
     # Check if requested file is in the s3 bucket
-    local_file = "recalibrated_index.csv"
-    if os.path.exists(local_file):
-        index_file = local_file
-
-    index_file = os.path.join(bucket.replace('s3://', 'https://s3.amazonaws.com/'),
+    local_index = "recalibrated_index.csv"
+    if os.path.exists(local_index):
+        index_file = local_index
+    else:
+        index_file = os.path.join(bucket.replace('s3://', 'https://s3.amazonaws.com/'),
                               'index.csv')
     try:
         filelist = Table.read(index_file, format='csv')
-        filelist.write(local_file, overwrite=True)
+        filelist.write(local_index, overwrite=True)
 
     except FileNotFoundError:
         msg = f'download_recalibrated_rate: index {index_file} not found'
