@@ -268,7 +268,7 @@ def query_all_jwst(instruments=['NRC','NIS','NRS','MIR'], columns=None, rd=None,
         empty = []
         for c in t.colnames:
             if t[c].dtype in [object]:
-                fill = np.in1d(t[c], [None])
+                fill = np.isin(t[c], [None])
                 if fill.sum() == len(t):
                     empty.append(c)
                     continue
@@ -583,7 +583,7 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
     
     if (extensions is not None) & ('filename' in tab.colnames):
         ext = [f.split('_')[-1].split('.')[0] for f in tab['filename']]
-        in_ext = np.in1d(ext, extensions)
+        in_ext = np.isin(ext, extensions)
         if in_ext.sum() == 0:
             log.warning(f'No files with extensions {extensions} found.')
             log.warning(f'Available extensions are {np.unique(ext).tolist()}')
