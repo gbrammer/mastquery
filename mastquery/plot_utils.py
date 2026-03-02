@@ -17,20 +17,22 @@ def draw_axis_labels(ax=None, nlabel=3, format='latex'):
     if ax is None:
         ax = plt.gca()
     
-    dy = np.abs(np.diff(ax.get_ylim()))
-    dx = np.abs(np.diff(ax.get_xlim()))
+    dy = np.abs(np.diff(ax.get_ylim()))[0]
+    dx = np.abs(np.diff(ax.get_xlim()))[0]
     
     yopts = [30./60, 1,2,4,8,16,30,60, 120, 240]
     yminor = [5./60, 10./60,1,2,2,4,10,15, 30, 60]
     ymaj = np.maximum(1., np.round(dy*60/nlabel))
-    y_i = int(np.round(np.interp(ymaj, yopts, range(len(yopts)), left=0)))
+    y_i = int(np.interp(ymaj, np.array(yopts), np.arange(len(yopts)), left=0))
+
     ymaj = yopts[y_i]
     yminor = yminor[y_i]
-    
+
     xopts =  [2, 5, 10, 15,30,60,120, 240, 480]
     xminor = [1, 1, 5, 5, 10, 15, 30, 60, 120]
     xmaj = np.maximum(1, np.round(dx*24/360*3600/nlabel))
-    x_i = int(np.round(np.interp(xmaj, xopts, range(len(xopts)), left=0)))
+    x_i = int(np.interp(xmaj, np.array(xopts), np.arange(len(xopts)), left=0))
+
     xmaj = xopts[x_i]
     xminor = xminor[x_i]
     

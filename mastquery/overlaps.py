@@ -1092,11 +1092,14 @@ def make_association_figure(tab, polys, highlight=None, root=None, xsize=6, nlab
                 labels.append(label)
                 filter_list.append(filt_i)
     
-    try:
-        from grizli.aws import db
-    except:
-        print('db_query_str specified but `from grizli.aws import db` failed!')
-        db_query_str = None
+    if db_query_str is not None:
+        try:
+            from grizli.aws import db
+        except:
+            print(
+                'db_query_str specified but `from grizli.aws import db` failed!'
+            )
+            db_query_str = None
     
     if db_query_str is not None:
         # "filter in ('F160W','F115W-CLEAR','F444W-CLEAR') OR instrume in ('NIRISS')"
