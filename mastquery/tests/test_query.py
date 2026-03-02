@@ -36,8 +36,6 @@ def test_products():
     """
     Get products info
     """
-    global QUERY
-    
     if QUERY is not None:
         _prod = query.get_products_table(QUERY, extensions=['RAW'], 
                                          use_astroquery=True)
