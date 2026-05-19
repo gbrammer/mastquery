@@ -25,136 +25,13 @@ try:
     import pysiaf
 except ImportError:
     print('`import pysiaf` failed, necessary for JWST processing')
-    
-ALL_COLUMNS = ['ArchiveFileID', 'filename', 'fileSetName', 'productLevel',
-               'act_id', 'apername', 'asnpool', 'asntable', 'bartdelt',
-               'bendtime', 'bkgdtarg', 'bkglevel', 'bkgsub', 'bmidtime',
-               'bstrtime', 'category', 'cont_id', 'datamode', 'dataprob',
-               'date', 'date_mjd', 'date_end', 'date_end_mjd', 'date_obs',
-               'date_obs_mjd', 'detector', 'drpfrms1', 'drpfrms3', 'duration',
-               'effexptm', 'effinttm', 'eng_qual', 'exp_type', 'expcount',
-               'expend', 'expmid', 'exposure', 'expripar', 'expstart',
-               'fastaxis', 'filter', 'frmdivsr', 'gdstarid',
-               'groupgap', 'gs_dec', 'gs_mag', 'gs_order', 'gs_ra',
-               'gsendtim', 'gsendtim_mjd', 'gsstrttm', 'gsstrttm_mjd',
-               'gs_udec', 'gs_umag', 'gs_ura', 'helidelt', 'hendtime',
-               'hga_move', 'hmidtime', 'hstrtime', 'instrume', 'intarget',
-               'is_psf', 'lamp', 'mu_dec', 'mu_epoch', 'mu_epoch_mjd',
-               'mu_ra', 'nexposur', 'nextend', 'nframes', 'ngroups', 'nints',
-               'nresets', 'nrststrt', 'nsamples', 'numdthpt', 'nwfsest',
-               'obs_id', 'observtn', 'obslabel', 'origin', 'pcs_mode',
-               'pi_name', 'pps_aper', 'prd_ver', 'program', 'prop_dec',
-               'prop_ra', 'pwfseet', 'readpatt', 'sca_num', 'scicat',
-               'sdp_ver', 'selfref', 'seq_id', 'slowaxis', 'subarray',
-               'subcat', 'subsize1', 'subsize2', 'substrt1', 'substrt2',
-               'targ_dec', 'targ_ra', 'targname', 'targoopp', 'targprop',
-               'targtype', 'targudec', 'targura', 'telescop', 'template',
-               'tframe', 'tgroup', 'timesys', 'title', 'tsample', 'tsovisit',
-               'visit', 'visit_id', 'visitend', 'visitend_mjd', 'visitgrp',
-               'visitsta', 'visitype', 'vststart', 'vststart_mjd', 'zerofram',
-               'errtype', 'wtype', 'datamodl', 'exp_only', 'exsegnum',
-               'exsegtot', 'intstart', 'intend', 'date_beg', 'date_beg_mjd',
-               'obsfoldr', 'sctarate', 'opmode', 'osf_file', 'masterbg',
-               'scatfile', 'srctyapt', 'tcatfile', 'texptime', 'patt_num',
-               'pattsize', 'patttype', 'pridtpts', 'subpxpts', 'crowdfld',
-               'engqlptg', 'oss_ver', 'noutputs', 'gs_v3_pa', 'dirimage',
-               'pixfrac', 'pxsclrt', 'segmfile', 'va_dec', 'va_ra',
-               's_region', 'cal_ver', 'cal_vcs', 'crds_ctx', 'crds_ver',
-               'focuspos', 'fwcpos', 'pupil', 'pwcpos', 'nrimdtpt',
-               'fileSize', 'checksum', 'ingestStartDate',
-               'ingestStartDate_mjd', 'ingestCompletionDate',
-               'ingestCompletionDate_mjd', 'FileTypeID', 'publicReleaseDate',
-               'publicReleaseDate_mjd', 'isRestricted', 'isItar', 'isStale',
-               'FileSetId', 'dataURI']
 
-DEFAULT_COLUMNS = {
-  'NIS':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
-         'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
-         'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
-         'telescop', 'instrume', 'detector', 'subarray',
-         'filter', 'pupil', 'fwcpos', 'pwcpos', 'lamp',
-         'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
-         'nints', 'nresets', 'effexptm as exptime',
-         'pi_name', 'program', 'title', 'category',
-         'targname', 'prop_ra', 'prop_dec',
-         'patttype', 'patt_num', 'pattsize',
-         'pridtpts', 'subpxpts',
-         'xoffset', 'yoffset',
-         's_region', 'crowdfld', 'pcs_mode', 'expripar',
-         'publicReleaseDate_mjd', #' as ReleaseDate',
-         'FileSetId', 'dataURI','fileSize'],
-  'NRC':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
-         'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
-         'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
-         'telescop', 'instrume', 'module', 'channel', 'detector', 'subarray',
-         'filter','pupil', 'lamp',
-         'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
-         'nints', 'nresets',
-         'effexptm', # ' as exptime',
-         'pi_name', 'program', 'title', 'category',
-         'targname', 'prop_ra', 'prop_dec', 
-         'patttype', 'patt_num', 'pattsize',
-         'pridtype', 'pridtpts', 'subpxpat', 'subpxpts', 'smgrdpat', 
-         'xoffset', 'yoffset',
-         's_region', 'crowdfld', 'pcs_mode', 'expripar', 
-         'publicReleaseDate_mjd', # ' as ReleaseDate',
-         'FileSetId', 'dataURI','fileSize'],
-  'MIR':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
-         'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
-         'gs_v3_pa', 'pps_aper', 'template',
-         'bkglevel', 'date_mjd', 'expstart', 'expend', 'exposure',
-         'telescop', 'instrume', 'channel', 'band', 'detector', 'subarray',
-         'filter', 'lamp',
-         'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
-         'nints', 'nresets',
-         'effexptm', #' as exptime',
-         'mirngrps', 'mirnfrms', 
-         'pi_name', 'program', 'title', 'category',
-         'targname', 'prop_ra', 'prop_dec', 
-         'patttype', 'patt_num', 'pattsize',
-         'pridtpts', 'subpxpts',
-         'xoffset', 'yoffset',
-         'dithdirc', 'dithopfr', 'dithpnts',
-         's_region', 'crowdfld', 'pcs_mode', 'expripar', 
-         'publicReleaseDate_mjd', # ' as ReleaseDate',
-         'FileSetId', 'dataURI','fileSize'],
-  'NRS':['ArchiveFileID', 'obs_id', 'filename', 'fileSetName',
-         'visit', 'visit_id', 'observtn', 'productLevel', 'apername',
-         'gs_v3_pa', 'pps_aper', 'template',
-          'bkglevel',
-         'date_mjd', 'expstart', 'expend', 'exposure',
-         'telescop', 'instrume', 'detector', 'subarray',
-         'nrs_norm', 'nrs_ref', 
-         'filter',
-         'fxd_slit',
-         'grating', 'lamp',
-         'msaconid', 'msametfl', 'msametid', 'msastate',
-         'preimage',
-         'readpatt', 'nexposur', 'nframes', 'ngroups', 'tframe',
-         'nints', 'nresets',
-         # 'effexptm as exptime',
-         'effexptm',
-         'pi_name', 'program', 'title', 'category',
-         'targname', 'prop_ra', 'prop_dec', 
-         'patttype', 'patt_num',
-         'pattsize',
-         'pridtpts',
-         'subpxpat',
-         'subpxpts', 'nod_type',
-         'xoffset', 'yoffset',
-         's_region', 'crowdfld', 'pcs_mode', 'expripar', 
-         # 'publicReleaseDate_mjd as ReleaseDate',
-         'publicReleaseDate_mjd',
-         'FileSetId', 'dataURI','fileSize'],
-}
 
 REQUEST = {'service': 'Mast.Jwst.Filtered.Niriss',
                 'params': {'columns': '*', 'filters': []},
                 'format': 'json',
                 'pagesize': 100000}
-                
+
 SERVICES = {'NIS':'Mast.Jwst.Filtered.Niriss', 
             'NRC':'Mast.Jwst.Filtered.Nircam',
             'MIR':'Mast.Jwst.Filtered.Miri',
@@ -185,6 +62,18 @@ FULL_SUBARRAY = [{'paramName': 'subarray', 'values': ['FULL']}]
 
 FINE_GUIDE = [{'paramName': 'pcs_mode', 'values': ['FINEGUIDE']}]
 
+def load_column_lists():
+    """
+    """
+    column_file = os.path.join(
+        os.path.dirname(__file__), "data", "mast_columns.yaml"
+    )
+    with open(column_file) as fp:
+        cols = yaml.load(fp, Loader=yaml.Loader)
+
+    return cols
+    
+MAST_COLUMNS = load_column_lists()
 
 def make_query_filter(column='filters', values=['F200W'], text=None, range=None):
     """
@@ -538,7 +427,7 @@ def match_dataportal_columns(res):
             res['filter'][i] = f'{inst_i}.{f_i}'
 
 
-def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal'], verbose=True):
+def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRAY+FINE_GUIDE, extra={'format':'json', 'pagesize': 100000}, recent_days=None, rates_and_cals=False, extensions=['rate', 'cal'], verbose=True, **kwargs):
     """
     Query 
     """    
@@ -559,7 +448,7 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         raise ValueError(msg)
     
     if columns is None:
-        columns = ','.join(DEFAULT_COLUMNS[instrument.upper()])
+        columns = ','.join(MAST_COLUMNS[instrument.upper()]["default"])
         
     request = {'service': SERVICES[instrument.upper()]}
     request['params'] = {'columns':columns, 
@@ -568,7 +457,6 @@ def query_jwst(instrument='NIS', columns='*', filters=CALIB_FILTERS+FULL_SUBARRA
         request[k] = extra[k]
     
     try:
-
         log.info(f'Query JWST {instrument}')
         log.debug(f'Request: ')
         log.debug(yaml.dump(request))
