@@ -164,6 +164,8 @@ def persistence_products(tab):
         for visit in visits:
             if isinstance(visit, str):
                 vst = visit
+            elif isinstance(visit, bytes):
+                vst = visit.decode("utf8")
             else:
                 vst = '{0:02d}'.format(visit)
         
